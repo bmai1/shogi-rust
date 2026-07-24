@@ -1,0 +1,13 @@
+https://github.com/yaneurao/YaneuraOu/wiki/やねうら王のインストール手順
+
+https://github.com/yaneurao/YaneuraOu/releases/tag/V9.00
+yaneuraou-V900-git-win64-all.7z
+
+eval/nn.bin: https://github.com/yaneurao/YaneuraOu/releases/tag/suisho5
+
+usi
+isready
+
+bench
+
+setoption name FV_SCALE value 24
