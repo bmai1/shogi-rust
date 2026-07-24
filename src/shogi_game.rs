@@ -2,8 +2,21 @@ use eframe::egui::{CentralPanel, Context, Rect, Vec2, Pos2};
 use shogi::{Position, Square, Move, Piece};
 use gilrs::{Gilrs, Event, EventType, Button};
 
-use crate::Board;
+use crate::board::Board;
 use crate::piece_button::{self, PIECE_TYPES};
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum GameMode {
+    VsEngine,
+    OnlinePvP,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum TurnState {
+    AwaitingLocalInput,
+    AwaitingOpponent,   // engine thinking, or waiting on network move
+    GameOver,
+}
 
 pub struct ShogiGame {
     pos: Position,
@@ -12,20 +25,27 @@ pub struct ShogiGame {
     error_message: String,
     gilrs: Gilrs,
     gamepad_cursor: [i32; 2], // [rank, file]
+    mode: GameMode,
+    return_to_menu: bool,
 }
 
 impl ShogiGame {
-    pub fn new(pos: Position, board: Board) -> Self {
+    pub fn new(pos: Position, board: Board, mode: GameMode) -> Self {
         let gilrs = Gilrs::new().expect("Failed to initialize gamepad input");
-
         Self {
             pos,
             board,
             promotion_flag: false,
             error_message: String::new(),
             gilrs,
-            gamepad_cursor: [4, 4], // start roughly centered on the board
+            gamepad_cursor: [4, 4],
+            mode,
+            return_to_menu: false,
         }
+    }
+
+    pub fn wants_return_to_menu(&mut self) -> bool {
+        std::mem::take(&mut self.return_to_menu)
     }
 
     fn handle_piece_move(&mut self, rank: usize, file: usize, curr_piece: Option<Piece>) {
@@ -271,6 +291,18 @@ impl eframe::App for ShogiGame {
                     self.render_grid(ui);
 
                     ui.add_space(390.0);
+
+                    ui.horizontal(|ui| {
+                        let mode_label = match self.mode {
+                            GameMode::VsEngine => "vs Engine",
+                            GameMode::OnlinePvP => "Online",
+                        };
+                        ui.label(format!("Mode: {}", mode_label));
+                        if ui.button("Menu").clicked() {
+                            self.return_to_menu = true;
+                        }
+                    });
+
                     ui.horizontal(|ui| {
                         if ui.button("New game").clicked() {
                             self.new_game();
@@ -282,6 +314,7 @@ impl eframe::App for ShogiGame {
                             self.promotion_flag = !self.promotion_flag;
                         }
                     });
+
                     // ui.horizontal(|ui| {
                     //     if ui.button("Print SFEN").clicked() {
                     //         println!("{}", self.pos.to_sfen());
@@ -292,6 +325,7 @@ impl eframe::App for ShogiGame {
                     //         self.pos.set_sfen(castle_sfen).expect("Failed to set castle position.");
                     //     }
                     // });
+
                     if !self.error_message.is_empty() {
                         ui.label(format!("{}", self.error_message));
                     }
