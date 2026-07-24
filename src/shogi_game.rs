@@ -282,16 +282,16 @@ impl eframe::App for ShogiGame {
                             self.promotion_flag = !self.promotion_flag;
                         }
                     });
-                    ui.horizontal(|ui| {
-                        if ui.button("Print SFEN").clicked() {
-                            println!("{}", self.pos.to_sfen());
-                        }
-                        if ui.button("Castle Presets").clicked() {
-                            self.new_game();
-                            let castle_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1 moves 2h7h 8b3b 5i4h 5a6b 4h3h 6b7b 3h2h 7b8b 3i3h 7a7b 6i5h 4a5b 1g1f";
-                            self.pos.set_sfen(castle_sfen).expect("Failed to set castle position.");
-                        }
-                    });
+                    // ui.horizontal(|ui| {
+                    //     if ui.button("Print SFEN").clicked() {
+                    //         println!("{}", self.pos.to_sfen());
+                    //     }
+                    //     if ui.button("Castle Presets").clicked() {
+                    //         self.new_game();
+                    //         let castle_sfen = "lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1 moves 2h7h 8b3b 5i4h 5a6b 4h3h 6b7b 3h2h 7b8b 3i3h 7a7b 6i5h 4a5b 1g1f";
+                    //         self.pos.set_sfen(castle_sfen).expect("Failed to set castle position.");
+                    //     }
+                    // });
                     if !self.error_message.is_empty() {
                         ui.label(format!("{}", self.error_message));
                     }
