@@ -1,17 +1,13 @@
-use shogi::Position;
 use std::sync::Arc;
 
+mod app;
+use app::ShogiApp;
 mod shogi_game;
-use shogi_game::ShogiGame;
 mod board;
-use board::Board;
 mod piece_button;
 
 fn main() -> Result<(), eframe::Error> {
     shogi::bitboard::Factory::init();
-    let board = Board::new();
-    let mut pos = Position::new();
-    pos.set_sfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1").unwrap();
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -25,7 +21,7 @@ fn main() -> Result<(), eframe::Error> {
         options,
         Box::new(|cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
-            Ok(Box::new(ShogiGame::new(pos, board)))
+            Ok(Box::new(ShogiApp::new()))
         }),
     )
 }
