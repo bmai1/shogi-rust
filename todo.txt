@@ -1,0 +1,5 @@
+- Redesign for player vs engine and pvp
+- Xbox controller support
+
+- p2p + matchmaking (steamworksrs)
+- YaneuraOu engine
