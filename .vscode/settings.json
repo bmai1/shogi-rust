@@ -1,6 +1,7 @@
 {
     "conventionalCommits.scopes": [
         "engine",
-        "piece"
+        "piece",
+        "steam"
     ]
 }
