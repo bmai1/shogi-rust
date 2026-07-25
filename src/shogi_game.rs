@@ -97,7 +97,8 @@ impl ShogiGame {
                     match self.pos.make_move(m) {
                         Ok(_) => {
                             self.error_message = format!("{}", m);
-                            if self.mode == GameMode::VsEngine {
+                            self.check_game_over();
+                            if self.turn_state != TurnState::GameOver && self.mode == GameMode::VsEngine {
                                 self.request_engine_move();
                             }
                         }
@@ -137,7 +138,8 @@ impl ShogiGame {
                 match self.pos.make_move(m) {
                     Ok(_) => {
                         self.error_message = format!("{}", m);
-                        if self.mode == GameMode::VsEngine {
+                        self.check_game_over();
+                        if self.turn_state != TurnState::GameOver && self.mode == GameMode::VsEngine {
                             self.request_engine_move();
                         }
                     }
@@ -315,11 +317,73 @@ impl ShogiGame {
         self.pos = Position::new();
         self.pos.set_sfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1").unwrap();
         self.error_message.clear();
+        self.turn_state = TurnState::AwaitingLocalInput;
     }
 
     fn undo_move(&mut self) {
         self.pos.unmake_move().unwrap();
         self.error_message.clear();
+        self.turn_state = TurnState::AwaitingLocalInput;
+    }
+
+    fn has_legal_move(pos: &mut Position) -> bool {
+        let side = pos.side_to_move();
+
+        // Normal (board) moves
+        for rank in 0..9 {
+            for file in 0..9 {
+                let sq = Square::new(file, rank).unwrap();
+                if let Some(piece) = pos.piece_at(sq).clone() {
+                    if piece.color != side {
+                        continue;
+                    }
+                    for to_sq in pos.move_candidates(sq, piece) {
+                        for &promote in &[false, true] {
+                            let m = Move::Normal { from: sq, to: to_sq, promote };
+                            if pos.make_move(m).is_ok() {
+                                pos.unmake_move().unwrap();
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Drop moves
+        for i in 0..14 {
+            let p = PIECE_TYPES[i];
+            if p.color != side || pos.hand(p) == 0 {
+                continue;
+            }
+            for rank in 0..9 {
+                for file in 0..9 {
+                    let sq = Square::new(file, rank).unwrap();
+                    if pos.piece_at(sq).clone().is_some() {
+                        continue;
+                    }
+                    let m = Move::Drop { to: sq, piece_type: p.piece_type };
+                    if pos.make_move(m).is_ok() {
+                        pos.unmake_move().unwrap();
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+    
+    fn check_game_over(&mut self) {
+        let side = self.pos.side_to_move();
+        if !Self::has_legal_move(&mut self.pos) {
+            self.turn_state = TurnState::GameOver;
+            let winner = match side {
+                shogi::Color::Black => "White",
+                shogi::Color::White => "Black",
+            };
+            self.error_message = format!("Checkmate! {} wins.", winner);
+        }
     }
 }
 
@@ -329,11 +393,16 @@ impl eframe::App for ShogiGame {
             if let Some(engine) = &mut self.engine {
                 if let Some(mv) = engine.poll_bestmove() {
                     match self.pos.make_move(mv) {
-                        Ok(_) => self.error_message = format!("Engine played: {}", mv),
+                        Ok(_) => {
+                            self.error_message = format!("Engine played: {}", mv);
+                            self.check_game_over();
+                        }
                         Err(err) => self.error_message = format!("Engine move error: {}", err),
                     }
                     self.board.reset_activity();
-                    self.turn_state = TurnState::AwaitingLocalInput;
+                    if self.turn_state != TurnState::GameOver {
+                        self.turn_state = TurnState::AwaitingLocalInput;
+                    }
                 }
             }
         }
