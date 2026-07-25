@@ -11,11 +11,34 @@ enum Screen {
 
 pub struct ShogiApp {
     screen: Screen,
+    steam: Option<steamworks::Client>,
+    menu_error: String,
 }
 
 impl ShogiApp {
     pub fn new() -> Self {
-        Self { screen: Screen::Menu }
+        Self { 
+            screen: Screen::Menu, 
+            steam: None,
+            menu_error: String::new(),
+        }
+    }
+
+    fn ensure_steam_initialized(&mut self) -> bool {
+        if self.steam.is_some() {
+            return true;
+        }
+        match steamworks::Client::init_app(480) {
+            Ok(client) => {
+                self.steam = Some(client);
+                println!("Steam init successful.");
+                true
+            }
+            Err(err) => {
+                eprintln!("Steam init failed: {err}");
+                false
+            }
+        }
     }
 
     fn start_game(&mut self, mode: GameMode) {
@@ -28,6 +51,9 @@ impl ShogiApp {
 
 impl eframe::App for ShogiApp {
     fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        if let Some(client) = &self.steam {
+            client.run_callbacks();
+        }
         match &mut self.screen {
             Screen::Menu => {
                 let mut chosen_mode: Option<GameMode> = None;
@@ -43,11 +69,22 @@ impl eframe::App for ShogiApp {
                         }
                         ui.add_space(15.0);
                         if ui.add_sized([240.0, 50.0], egui::Button::new("Start Online Match")).clicked() {
-                            chosen_mode = Some(GameMode::OnlinePvP);
+                             if self.ensure_steam_initialized() {
+                                self.menu_error.clear();
+                                chosen_mode = Some(GameMode::OnlinePvP);
+                            } else {
+                                self.menu_error = String::from(
+                                    "Couldn't connect to Steam. Make sure Steam is running and you're logged in, then try again."
+                                );
+                            }
                         }
                         ui.add_space(15.0);
                         if ui.add_sized([240.0, 50.0], egui::Button::new("Sandbox")).clicked() {
                             chosen_mode = Some(GameMode::Sandbox);
+                        }
+                        if !self.menu_error.is_empty() {
+                            ui.add_space(15.0);
+                            ui.colored_label(egui::Color32::from_rgb(200, 60, 60), &self.menu_error);
                         }
                     });
                 });
