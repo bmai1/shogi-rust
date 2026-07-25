@@ -4,13 +4,16 @@ use gilrs::{Gilrs, Event, EventType, Button};
 
 use crate::board::Board;
 use crate::piece_button::{self, PIECE_TYPES};
+use crate::engine::{self, UsiEngine};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum GameMode {
     VsEngine,
     OnlinePvP,
+    Sandbox,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq)]
 pub enum TurnState {
     AwaitingLocalInput,
@@ -26,12 +29,24 @@ pub struct ShogiGame {
     gilrs: Gilrs,
     gamepad_cursor: [i32; 2], // [rank, file]
     mode: GameMode,
+    turn_state: TurnState,
+    engine: Option<UsiEngine>,
+    engine_think_ms: i32,
+    show_engine_settings: bool,
     return_to_menu: bool,
 }
 
 impl ShogiGame {
     pub fn new(pos: Position, board: Board, mode: GameMode) -> Self {
         let gilrs = Gilrs::new().expect("Failed to initialize gamepad input");
+
+        let engine = match mode {
+            GameMode::VsEngine | GameMode::Sandbox => Some (
+                UsiEngine::spawn(&engine::engine_path()).expect("Failed to start YaneuraOu")
+            ),
+            GameMode::OnlinePvP => None,
+        };
+
         Self {
             pos,
             board,
@@ -40,6 +55,10 @@ impl ShogiGame {
             gilrs,
             gamepad_cursor: [4, 4],
             mode,
+            turn_state: TurnState::AwaitingLocalInput,
+            engine,
+            engine_think_ms: 3000,
+            show_engine_settings: false,
             return_to_menu: false,
         }
     }
@@ -75,10 +94,18 @@ impl ShogiGame {
                     };
 
                     self.error_message = format!("{}", m);
-                    self.pos.make_move(m).unwrap_or_else(|err| {
-                        self.error_message = format!("Error in make_move: {}", err);
-                        Default::default()
-                    });
+                    match self.pos.make_move(m) {
+                        Ok(_) => {
+                            self.error_message = format!("{}", m);
+                            self.check_game_over();
+                            if self.turn_state != TurnState::GameOver && self.mode == GameMode::VsEngine {
+                                self.request_engine_move();
+                            }
+                        }
+                        Err(err) => {
+                            self.error_message = format!("Error in make_move: {}", err);
+                        }
+                    }
                 }
 
                 match curr_piece {
@@ -108,14 +135,29 @@ impl ShogiGame {
                 let m = Move::Drop { to: to_sq, piece_type: PIECE_TYPES[active_hand].piece_type };
 
                 self.error_message = format!("{}", m);
-                self.pos.make_move(m).unwrap_or_else(|err| {
-                    self.error_message = format!("Error in make_move: {}", err);
-                    Default::default()
-                });
+                match self.pos.make_move(m) {
+                    Ok(_) => {
+                        self.error_message = format!("{}", m);
+                        self.check_game_over();
+                        if self.turn_state != TurnState::GameOver && self.mode == GameMode::VsEngine {
+                            self.request_engine_move();
+                        }
+                    }
+                    Err(err) => {
+                        self.error_message = format!("Error in make_move: {}", err);
+                    }
+                }
             }
             self.board.reset_activity();
         }
     }
+
+    fn request_engine_move(&mut self) {
+    if let Some(engine) = &mut self.engine {
+        engine.request_move(&self.pos.to_sfen(), self.engine_think_ms);
+        self.turn_state = TurnState::AwaitingOpponent;
+    }
+}
 
     // Drains pending gamepad events, moves the on-screen cursor with the D-pad,
     // and returns true for exactly one frame when a "confirm" button was pressed.
@@ -196,6 +238,8 @@ impl ShogiGame {
     }
 
     fn render_pieces(&mut self, ui: &mut egui::Ui) {
+        let input_enabled = self.turn_state == TurnState::AwaitingLocalInput;
+
         let position_factor = 62.22;
         let (offset_x, offset_y) = (106.5, 56.5);
         let board_size = 560.0;
@@ -224,7 +268,7 @@ impl ShogiGame {
                 let clicked = ui.put(rect, button).clicked();
                 let gamepad_confirmed = confirm && cursor_rank == rank as i32 && cursor_file == file as i32;
 
-                if clicked || gamepad_confirmed {
+                if input_enabled && (clicked || gamepad_confirmed) {
                     self.handle_piece_move(rank, file, curr_piece);
                 }
             }
@@ -245,7 +289,7 @@ impl ShogiGame {
                 if self.board.active_hand == i {
                     ui.painter().rect(rect, 0.0, fill, stroke);
                 }
-                if ui.put(rect, button).clicked() && p.color == self.pos.side_to_move() {
+                if input_enabled && ui.put(rect, button).clicked() && p.color == self.pos.side_to_move() {
                     let tmp = self.board.active_hand;
                     self.board.reset_activity();
                     if tmp != i {
@@ -273,16 +317,96 @@ impl ShogiGame {
         self.pos = Position::new();
         self.pos.set_sfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1").unwrap();
         self.error_message.clear();
+        self.turn_state = TurnState::AwaitingLocalInput;
     }
 
     fn undo_move(&mut self) {
         self.pos.unmake_move().unwrap();
         self.error_message.clear();
+        self.turn_state = TurnState::AwaitingLocalInput;
+    }
+
+    fn has_legal_move(pos: &mut Position) -> bool {
+        let side = pos.side_to_move();
+
+        // Normal (board) moves
+        for rank in 0..9 {
+            for file in 0..9 {
+                let sq = Square::new(file, rank).unwrap();
+                if let Some(piece) = pos.piece_at(sq).clone() {
+                    if piece.color != side {
+                        continue;
+                    }
+                    for to_sq in pos.move_candidates(sq, piece) {
+                        for &promote in &[false, true] {
+                            let m = Move::Normal { from: sq, to: to_sq, promote };
+                            if pos.make_move(m).is_ok() {
+                                pos.unmake_move().unwrap();
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Drop moves
+        for i in 0..14 {
+            let p = PIECE_TYPES[i];
+            if p.color != side || pos.hand(p) == 0 {
+                continue;
+            }
+            for rank in 0..9 {
+                for file in 0..9 {
+                    let sq = Square::new(file, rank).unwrap();
+                    if pos.piece_at(sq).clone().is_some() {
+                        continue;
+                    }
+                    let m = Move::Drop { to: sq, piece_type: p.piece_type };
+                    if pos.make_move(m).is_ok() {
+                        pos.unmake_move().unwrap();
+                        return true;
+                    }
+                }
+            }
+        }
+
+        false
+    }
+    
+    fn check_game_over(&mut self) {
+        let side = self.pos.side_to_move();
+        if !Self::has_legal_move(&mut self.pos) {
+            self.turn_state = TurnState::GameOver;
+            let winner = match side {
+                shogi::Color::Black => "White",
+                shogi::Color::White => "Black",
+            };
+            self.error_message = format!("Checkmate! {} wins.", winner);
+        }
     }
 }
 
 impl eframe::App for ShogiGame {
     fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        if self.turn_state == TurnState::AwaitingOpponent {
+            if let Some(engine) = &mut self.engine {
+                if let Some(mv) = engine.poll_bestmove() {
+                    match self.pos.make_move(mv) {
+                        Ok(_) => {
+                            self.error_message = format!("Engine played: {}", mv);
+                            self.check_game_over();
+                        }
+                        Err(err) => self.error_message = format!("Engine move error: {}", err),
+                    }
+                    self.board.reset_activity();
+                    if self.turn_state != TurnState::GameOver {
+                        self.turn_state = TurnState::AwaitingLocalInput;
+                    }
+                }
+            }
+        }
+
         CentralPanel::default().show(ctx, |ui| {
             egui::Frame::default()
                 .inner_margin(egui::Margin { left: 100.0, right: 100.0, top: 50.0, bottom: 50.0 })
@@ -296,6 +420,7 @@ impl eframe::App for ShogiGame {
                         let mode_label = match self.mode {
                             GameMode::VsEngine => "vs Engine",
                             GameMode::OnlinePvP => "Online",
+                            GameMode::Sandbox => "Sandbox",
                         };
                         ui.label(format!("Mode: {}", mode_label));
                         if ui.button("Menu").clicked() {
@@ -312,6 +437,20 @@ impl eframe::App for ShogiGame {
                         }
                         if ui.button(format!("Promotion: {}", self.promotion_flag)).clicked() {
                             self.promotion_flag = !self.promotion_flag;
+                        }
+                    });
+                    ui.horizontal(|ui| {
+                        if self.engine.is_some() {
+                            if ui.button("Engine Settings").clicked() {
+                                self.show_engine_settings = true;
+                            }
+                            let engine_busy = self.turn_state == TurnState::AwaitingOpponent;
+                            if ui.add_enabled(!engine_busy, egui::Button::new("Make Engine Move")).clicked() {
+                                self.request_engine_move();
+                            }
+                            if engine_busy {
+                                ui.label("(thinking...)");
+                            }
                         }
                     });
 
@@ -332,6 +471,17 @@ impl eframe::App for ShogiGame {
 
                     ctx.request_repaint(); // needed for gamepad state to update every frame
                 });
+                egui::Window::new("Engine Settings")
+                    .open(&mut self.show_engine_settings)
+                    .resizable(false)
+                    .collapsible(false)
+                    .show(ctx, |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut self.engine_think_ms, 1000..=10000)
+                                .step_by(1000.0)
+                                .text("Thinking time (ms)")
+                        );
+                    });
         });
     }
 }

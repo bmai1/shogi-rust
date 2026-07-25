@@ -45,6 +45,10 @@ impl eframe::App for ShogiApp {
                         if ui.add_sized([240.0, 50.0], egui::Button::new("Start Online Match")).clicked() {
                             chosen_mode = Some(GameMode::OnlinePvP);
                         }
+                        ui.add_space(15.0);
+                        if ui.add_sized([240.0, 50.0], egui::Button::new("Sandbox")).clicked() {
+                            chosen_mode = Some(GameMode::Sandbox);
+                        }
                     });
                 });
 

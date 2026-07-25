@@ -5,6 +5,7 @@ use app::ShogiApp;
 mod shogi_game;
 mod board;
 mod piece_button;
+mod engine;
 
 fn main() -> Result<(), eframe::Error> {
     shogi::bitboard::Factory::init();
