@@ -250,7 +250,7 @@ impl ShogiGame {
         let fill = egui::Color32::from_rgba_unmultiplied(60, 110, 40, 128);
         let stroke = egui::Stroke::new(1.0f32, fill);
 
-        ui.add(egui::Image::new(egui::include_image!("images/boards/painting1.jpg")).fit_to_exact_size(egui::vec2(board_size, board_size)));
+        ui.add(egui::Image::new(egui::include_image!("images/boards/kaya1.jpg")).fit_to_exact_size(egui::vec2(board_size, board_size)));
 
         for rank in 0..9 {
             for file in 0..9 {
