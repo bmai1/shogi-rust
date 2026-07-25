@@ -1,0 +1,35 @@
+STEAMWORKS SETUP — NOTES
+
+Files needed next to the game exe:
+  steam_api64.dll        <- from SDK's redistributable_bin/win64
+  steam_appid.txt         <- contains "480" (Spacewar test app, free, no
+                             partner fee needed until real App ID release)
+
+Requirements to run:
+  - Steam client must be running & logged in on the machine
+  - Testing P2P needs TWO separate Steam accounts (two machines/VMs,
+    since one Steam client = one login)
+
+Why lazy-init:
+  - VsEngine / Sandbox modes don't touch Steam at all
+  - Only call Client::init_app() when the player picks "Online Match"
+  - Keeps offline play fully usable without Steam running
+
+Core objects:
+  steamworks::Client       -> the handle you call SDK methods through
+                               (lobbies, networking sockets, etc.)
+  steamworks::SingleClient -> must call .run_callbacks() every frame,
+                               or nothing (lobby joins, P2P connection
+                               requests, etc.) ever actually arrives
+
+Startup sequence:
+  1. Client::init_app(480) -> Result<(Client, SingleClient), SteamError>
+  2. Store both somewhere long-lived (ShogiApp, not per-frame)
+  3. Every frame: single_client.run_callbacks()
+  4. Everything else (lobbies, P2P sockets) hangs off `Client`
+
+What's NOT set up yet (next steps):
+  - Lobby creation / join (matchmaking)
+  - NetworkingSockets connection between two peers
+  - Move-transport layer (send/receive SFEN moves over the connection)
+  - Swapping App ID 480 -> real registered App ID before actual release
