@@ -10,6 +10,7 @@ use crate::engine::{self, UsiEngine};
 pub enum GameMode {
     VsEngine,
     OnlinePvP,
+    Sandbox,
 }
 
 #[allow(dead_code)]
@@ -40,7 +41,7 @@ impl ShogiGame {
         let gilrs = Gilrs::new().expect("Failed to initialize gamepad input");
 
         let engine = match mode {
-            GameMode::VsEngine => Some (
+            GameMode::VsEngine | GameMode::Sandbox => Some (
                 UsiEngine::spawn(&engine::engine_path()).expect("Failed to start YaneuraOu")
             ),
             GameMode::OnlinePvP => None,
@@ -350,6 +351,7 @@ impl eframe::App for ShogiGame {
                         let mode_label = match self.mode {
                             GameMode::VsEngine => "vs Engine",
                             GameMode::OnlinePvP => "Online",
+                            GameMode::Sandbox => "Sandbox",
                         };
                         ui.label(format!("Mode: {}", mode_label));
                         if ui.button("Menu").clicked() {
