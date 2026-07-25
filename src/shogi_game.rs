@@ -30,6 +30,8 @@ pub struct ShogiGame {
     mode: GameMode,
     turn_state: TurnState,
     engine: Option<UsiEngine>,
+    engine_think_ms: i32,
+    show_engine_settings: bool,
     return_to_menu: bool,
 }
 
@@ -54,6 +56,8 @@ impl ShogiGame {
             mode,
             turn_state: TurnState::AwaitingLocalInput,
             engine,
+            engine_think_ms: 3000,
+            show_engine_settings: false,
             return_to_menu: false,
         }
     }
@@ -147,7 +151,7 @@ impl ShogiGame {
 
     fn request_engine_move(&mut self) {
     if let Some(engine) = &mut self.engine {
-        engine.request_move(&self.pos.to_sfen(), 3000);
+        engine.request_move(&self.pos.to_sfen(), self.engine_think_ms);
         self.turn_state = TurnState::AwaitingOpponent;
     }
 }
@@ -364,6 +368,20 @@ impl eframe::App for ShogiGame {
                             self.promotion_flag = !self.promotion_flag;
                         }
                     });
+                    ui.horizontal(|ui| {
+                        if self.engine.is_some() {
+                            if ui.button("Engine Settings").clicked() {
+                                self.show_engine_settings = true;
+                            }
+                            let engine_busy = self.turn_state == TurnState::AwaitingOpponent;
+                            if ui.add_enabled(!engine_busy, egui::Button::new("Make Engine Move")).clicked() {
+                                self.request_engine_move();
+                            }
+                            if engine_busy {
+                                ui.label("(thinking...)");
+                            }
+                        }
+                    });
 
                     // ui.horizontal(|ui| {
                     //     if ui.button("Print SFEN").clicked() {
@@ -382,6 +400,17 @@ impl eframe::App for ShogiGame {
 
                     ctx.request_repaint(); // needed for gamepad state to update every frame
                 });
+                egui::Window::new("Engine Settings")
+                    .open(&mut self.show_engine_settings)
+                    .resizable(false)
+                    .collapsible(false)
+                    .show(ctx, |ui| {
+                        ui.add(
+                            egui::Slider::new(&mut self.engine_think_ms, 1000..=10000)
+                                .step_by(1000.0)
+                                .text("Thinking time (ms)")
+                        );
+                    });
         });
     }
 }
