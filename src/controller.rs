@@ -197,6 +197,15 @@ impl OnlineController {
         self.role = None;
     }
 
+    pub fn display_name(&self, id: SteamId) -> String {
+        let name = self.client.friends().get_friend(id).name();
+        if name.is_empty() {
+            format!("Player {}", id.raw() % 10000)
+        } else {
+            name
+        }
+    }
+
     // ---- Move exchange -----------------------------------------------------
 
     /// Sends a move to the opponent. Returns `false` if we don't have an
