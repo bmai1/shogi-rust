@@ -1,4 +1,4 @@
-use egui::{ImageButton, ImageSource, include_image};
+use egui::{Button, Image, ImageSource, include_image, Vec2};
 use shogi::{Piece, PieceType, Color};
 
 pub fn piece_image_source(piece: Piece) -> ImageSource<'static> {
@@ -34,12 +34,13 @@ pub fn piece_image_source(piece: Piece) -> ImageSource<'static> {
     }
 }
 
-pub fn piece_button(piece: Option<Piece>) -> ImageButton<'static> {
+pub fn piece_button(piece: Option<Piece>) -> Button<'static> {
     let src = match piece {
         Some(p) => piece_image_source(p),
         None => include_image!("images/pieces/empty.png"),
     };
-    ImageButton::new(src).frame(false)
+    let image = Image::new(src).fit_to_exact_size(Vec2::splat(60.0));
+    Button::image(image).frame(false).min_size(Vec2::splat(60.0))
 }
 
 pub fn is_promoted(piece_type: PieceType) -> bool {
