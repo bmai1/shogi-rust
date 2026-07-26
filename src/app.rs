@@ -68,6 +68,13 @@ impl ShogiApp {
         let mut start: Option<(LobbyRole, ())> = None;
 
         if let Screen::Online(online) = &mut self.screen {
+            // Keep ticking every frame while outstanding Steam call
+            // or waiting on the opponent otherwise run_callbacks() only
+            // fires on user input and async results can sit unclaimed for a while.
+            if online.controller.is_waiting_on_steam() || matches!(online.stage, OnlineStage::Waiting) {
+                ui.ctx().request_repaint();
+            }
+
             // Resolve create/join once they land.
             if let Some(result) = online.controller.poll_pending() {
                 match result {
@@ -88,8 +95,10 @@ impl ShogiApp {
                 }
             }
 
-            // Host: wait for the second lobby member to show up.
-            if matches!(online.stage, OnlineStage::Waiting)
+            // Host-only: wait for the second lobby member to show up.
+            if start.is_none()
+                && online.controller.role() == Some(LobbyRole::Host)
+                && matches!(online.stage, OnlineStage::Waiting)
                 && online.controller.poll_opponent_joined().is_some()
             {
                 start = Some((LobbyRole::Host, ()));

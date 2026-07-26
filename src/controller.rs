@@ -45,6 +45,10 @@ pub struct OnlineController {
 }
 
 impl OnlineController {
+    pub fn role(&self) -> Option<LobbyRole> {
+        self.role
+    }
+
     pub fn new(client: Client) -> Self {
         // Auto-accept incoming P2P sessions; we gate who we actually listen to
         // by only ever polling messages once we know our opponent's SteamId.
@@ -127,7 +131,6 @@ impl OnlineController {
         });
     }
 
-    #[allow(dead_code)]
     pub fn is_waiting_on_steam(&self) -> bool {
         self.create_rx.is_some() || self.join_rx.is_some()
     }
