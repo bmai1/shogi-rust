@@ -1,4 +1,4 @@
-use eframe::egui::{self, CentralPanel, Context};
+use eframe::egui::{self, CentralPanel};
 use shogi::Position;
 
 use crate::board::Board;
@@ -63,7 +63,7 @@ impl ShogiApp {
         self.screen = Screen::Game(ShogiGame::new(pos, board, mode, net, local_color));
     }
 
-    fn update_online_screen(&mut self, ctx: &Context) {
+    fn update_online_screen(&mut self, ui: &mut egui::Ui) {
         let mut back_to_menu = false;
         let mut start: Option<(LobbyRole, ())> = None;
 
@@ -100,7 +100,7 @@ impl ShogiApp {
                 online.lobbies = list;
             }
 
-            CentralPanel::default().show(ctx, |ui| {
+            CentralPanel::default().show(ui, |ui| {
                 ui.vertical_centered(|ui| {
                     ui.add_space(60.0);
                     ui.heading("Online Match");
@@ -132,10 +132,11 @@ impl ShogiApp {
                                     ui.label("No lobbies found yet.");
                                 }
                                 for lobby in online.lobbies.clone() {
+                                    let host_name = online.controller.display_name(lobby.owner);
                                     ui.horizontal(|ui| {
                                         ui.label(format!(
-                                            "Lobby ({}/2 players)",
-                                            lobby.member_count
+                                           "{}'s game ({}/2 players)",
+                                            host_name, lobby.member_count
                                         ));
                                         if ui.button("Join").clicked() {
                                             online.controller.join_lobby(lobby.id);
@@ -167,7 +168,7 @@ impl ShogiApp {
 }
 
 impl eframe::App for ShogiApp {
-    fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         if let Some(client) = &self.steam {
             client.run_callbacks();
         }
@@ -176,7 +177,7 @@ impl eframe::App for ShogiApp {
                 let mut chosen_mode: Option<GameMode> = None;
                 let mut go_online = false;
 
-                CentralPanel::default().show(ctx, |ui| {
+                egui::CentralPanel::default().show(ui, |ui| {
                     ui.vertical_centered(|ui| {
                         ui.add_space(180.0);
                         ui.heading(egui::RichText::new("Shogi").size(64.0));
@@ -220,10 +221,10 @@ impl eframe::App for ShogiApp {
                 }
             }
             Screen::Online(_) => {
-                self.update_online_screen(ctx);
+                self.update_online_screen(ui);
             }
             Screen::Game(game) => {
-                game.update(ctx, frame);
+                game.ui(ui, frame);
                 if game.wants_return_to_menu() {
                     self.screen = Screen::Menu;
                 }

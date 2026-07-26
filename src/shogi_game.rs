@@ -1,4 +1,4 @@
-use eframe::egui::{CentralPanel, Context, Rect, Vec2, Pos2};
+use eframe::egui::{CentralPanel, Rect, Vec2, Pos2, StrokeKind};
 use shogi::{Position, Square, Move, Piece};
 use gilrs::{Gilrs, Event, EventType, Button};
 
@@ -189,11 +189,11 @@ impl ShogiGame {
     }
 
     fn request_engine_move(&mut self) {
-    if let Some(engine) = &mut self.engine {
-        engine.request_move(&self.pos.to_sfen(), self.engine_think_ms);
-        self.turn_state = TurnState::AwaitingOpponent;
+        if let Some(engine) = &mut self.engine {
+            engine.request_move(&self.pos.to_sfen(), self.engine_think_ms);
+            self.turn_state = TurnState::AwaitingOpponent;
+        }
     }
-}
 
     // Drains pending gamepad events, moves the on-screen cursor with the D-pad,
     // and returns true for exactly one frame when a "confirm" button was pressed.
@@ -220,6 +220,22 @@ impl ShogiGame {
             }
         }
         confirm
+    }
+
+    /// Whether the board should be drawn flipped 180° (White's perspective).
+    /// VsEngine/Sandbox have no local_color and always render Black-side-down.
+    fn is_flipped(&self) -> bool {
+        self.local_color == Some(shogi::Color::White)
+    }
+
+    /// Maps a logical (rank, file) to the (rank, file) actually used for
+    /// screen-position math, honoring the current orientation.
+    fn display_coords(&self, rank: usize, file: usize) -> (usize, usize) {
+        if self.is_flipped() {
+            (8 - rank, 8 - file)
+        } else {
+            (rank, file)
+        }
     }
 
     fn render_grid(&mut self, ui: &mut egui::Ui) {
@@ -290,11 +306,15 @@ impl ShogiGame {
 
         for rank in 0..9 {
             for file in 0..9 {
-                let min = Pos2::new(board_size - ((file + 1) as f32 * position_factor) + offset_x, rank as f32 * position_factor + offset_y);
+                let (draw_rank, draw_file) = self.display_coords(rank, file);
+                let min = Pos2::new(
+                    board_size - ((draw_file + 1) as f32 * position_factor) + offset_x,
+                    draw_rank as f32 * position_factor + offset_y,
+                );
                 let rect = Rect::from_min_size(min, Vec2::new(60.0, 60.0));
 
                 if self.board.active == [rank as i32, file as i32] {
-                    ui.painter().rect(rect, 0.0, fill, stroke);
+                    ui.painter().rect(rect, 0.0, fill, stroke, egui::StrokeKind::Outside);
                 }
 
                 let sq = Square::new(file as u8, rank as u8).unwrap();
@@ -314,16 +334,23 @@ impl ShogiGame {
             let p = PIECE_TYPES[i];
             let count = self.pos.hand(p);
 
-            let (x, y) = match p.color {
-                shogi::Color::Black => (board_size + offset_x + 25.0, board_size - 10.0 - ((i % 7) as f32 * position_factor)),
-                shogi::Color::White => (25.0, offset_y - 1.0 + (i % 7) as f32 * position_factor),
+            let is_near_side = match self.local_color {
+                Some(local) => p.color == local,
+                None => p.color == shogi::Color::Black, // VsEngine/Sandbox: unchanged default
             };
+
+            let (x, y) = if is_near_side {
+                (board_size + offset_x + 25.0, board_size - 10.0 - ((i % 7) as f32 * position_factor))
+            } else {
+                (25.0, offset_y - 1.0 + (i % 7) as f32 * position_factor)
+            };
+
             let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(60.0, 60.0));
             let button = piece_button::piece_button(Some(p));
 
             if count != 0 {
                 if self.board.active_hand == i {
-                    ui.painter().rect(rect, 0.0, fill, stroke);
+                    ui.painter().rect(rect, 0.0, fill, stroke, StrokeKind::Outside);
                 }
                 if input_enabled && ui.put(rect, button).clicked() && p.color == self.pos.side_to_move() {
                     let tmp = self.board.active_hand;
@@ -337,15 +364,20 @@ impl ShogiGame {
                 ui.put(rect, button);
                 let fill = egui::Color32::from_rgba_unmultiplied(23, 23, 23, 128);
                 let stroke = egui::Stroke::new(1.0f32, fill);
-                ui.painter().rect(rect, 0.0, fill, stroke);
+                ui.painter().rect(rect, 0.0, fill, stroke, StrokeKind::Outside);
             }
         }
 
         // Highlight the gamepad cursor square
-        let min = Pos2::new(board_size - ((cursor_file + 1) as f32 * position_factor) + offset_x, cursor_rank as f32 * position_factor + offset_y);
+        let (draw_cursor_rank, draw_cursor_file) =
+            self.display_coords(cursor_rank as usize, cursor_file as usize);
+        let min = Pos2::new(
+            board_size - ((draw_cursor_file + 1) as f32 * position_factor) + offset_x,
+            draw_cursor_rank as f32 * position_factor + offset_y,
+        );
         let rect = Rect::from_min_size(min, Vec2::new(60.0, 60.0));
         let cursor_stroke = egui::Stroke::new(2.0f32, egui::Color32::from_rgba_unmultiplied(200, 200, 40, 200));
-        ui.painter().rect_stroke(rect, 0.0, cursor_stroke);
+        ui.painter().rect_stroke(rect, 0.0, cursor_stroke, StrokeKind::Outside);
     }
 
     fn new_game(&mut self) {
@@ -421,10 +453,10 @@ impl ShogiGame {
             self.error_message = format!("Checkmate! {} wins.", winner);
         }
     }
-}
 
-impl eframe::App for ShogiGame {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    pub fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        let ctx = ui.ctx().clone();
+
         if self.turn_state == TurnState::AwaitingOpponent {
             if let Some(engine) = &mut self.engine {
                 if let Some(mv) = engine.poll_bestmove() {
@@ -461,9 +493,9 @@ impl eframe::App for ShogiGame {
             }
         }
 
-        CentralPanel::default().show(ctx, |ui| {
+        CentralPanel::default().show(ui, |ui| {
             egui::Frame::default()
-                .inner_margin(egui::Margin { left: 100.0, right: 100.0, top: 50.0, bottom: 50.0 })
+                .inner_margin(egui::Margin { left: 100, right: 100, top: 50, bottom: 50 })
                 .show(ui, |ui| {
                     self.render_pieces(ui);
                     self.render_grid(ui);
@@ -531,7 +563,7 @@ impl eframe::App for ShogiGame {
                     .open(&mut self.show_engine_settings)
                     .resizable(false)
                     .collapsible(false)
-                    .show(ctx, |ui| {
+                    .show(ui, |ui| {
                         ui.add(
                             egui::Slider::new(&mut self.engine_think_ms, 1000..=10000)
                                 .step_by(1000.0)
