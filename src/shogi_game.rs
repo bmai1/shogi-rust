@@ -5,6 +5,7 @@ use gilrs::{Gilrs, Event, EventType, Button};
 use crate::board::Board;
 use crate::piece_button::{self, PIECE_TYPES};
 use crate::engine::{self, UsiEngine};
+use crate::controller::OnlineController;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum GameMode {
@@ -34,10 +35,18 @@ pub struct ShogiGame {
     engine_think_ms: i32,
     show_engine_settings: bool,
     return_to_menu: bool,
+    net: Option<OnlineController>,
+    local_color: Option<shogi::Color>,
 }
 
 impl ShogiGame {
-    pub fn new(pos: Position, board: Board, mode: GameMode) -> Self {
+    pub fn new(
+        pos: Position, 
+        board: Board, 
+        mode: GameMode,
+        net: Option<OnlineController>,
+        local_color: Option<shogi::Color>,
+    ) -> Self {
         let gilrs = Gilrs::new().expect("Failed to initialize gamepad input");
 
         let engine = match mode {
@@ -45,6 +54,12 @@ impl ShogiGame {
                 UsiEngine::spawn(&engine::engine_path()).expect("Failed to start YaneuraOu")
             ),
             GameMode::OnlinePvP => None,
+        };
+
+        // Black moves first
+        let turn_state = match (mode, local_color) {
+            (GameMode::OnlinePvP, Some(shogi::Color::White)) => TurnState::AwaitingOpponent,
+            _ => TurnState::AwaitingLocalInput,
         };
 
         Self {
@@ -55,16 +70,29 @@ impl ShogiGame {
             gilrs,
             gamepad_cursor: [4, 4],
             mode,
-            turn_state: TurnState::AwaitingLocalInput,
+            turn_state,
             engine,
             engine_think_ms: 3000,
             show_engine_settings: false,
             return_to_menu: false,
+            net,
+            local_color, // Use this to flip White board
         }
     }
 
     pub fn wants_return_to_menu(&mut self) -> bool {
         std::mem::take(&mut self.return_to_menu)
+    }
+
+    /// Sends our move to the opponent and locks local input until their reply arrives
+    fn send_local_move(&mut self, mv: &Move) {
+        if let Some(net) = &self.net {
+            if net.send_move(mv) {
+                self.turn_state = TurnState::AwaitingOpponent;
+            } else {
+                self.error_message = "Failed to send move — opponent not connected yet.".into();
+            }
+        }
     }
 
     fn handle_piece_move(&mut self, rank: usize, file: usize, curr_piece: Option<Piece>) {
@@ -98,8 +126,12 @@ impl ShogiGame {
                         Ok(_) => {
                             self.error_message = format!("{}", m);
                             self.check_game_over();
-                            if self.turn_state != TurnState::GameOver && self.mode == GameMode::VsEngine {
-                                self.request_engine_move();
+                            if self.turn_state != TurnState::GameOver {
+                                match self.mode {
+                                    GameMode::VsEngine => self.request_engine_move(),
+                                    GameMode::OnlinePvP => self.send_local_move(&m),
+                                    GameMode::Sandbox => {}
+                                }
                             }
                         }
                         Err(err) => {
@@ -139,8 +171,12 @@ impl ShogiGame {
                     Ok(_) => {
                         self.error_message = format!("{}", m);
                         self.check_game_over();
-                        if self.turn_state != TurnState::GameOver && self.mode == GameMode::VsEngine {
-                            self.request_engine_move();
+                        if self.turn_state != TurnState::GameOver {
+                            match self.mode {
+                                GameMode::VsEngine => self.request_engine_move(),
+                                GameMode::OnlinePvP => self.send_local_move(&m),
+                                GameMode::Sandbox => {}
+                            }
                         }
                     }
                     Err(err) => {
@@ -405,6 +441,24 @@ impl eframe::App for ShogiGame {
                     }
                 }
             }
+
+            if self.mode == GameMode::OnlinePvP {
+                if let Some(net) = &self.net {
+                    if let Some(mv) = net.poll_move() {
+                        match self.pos.make_move(mv) {
+                            Ok(_) => {
+                                self.error_message = format!("Opponent played: {}", mv);
+                                self.check_game_over();
+                            }
+                            Err(err) => self.error_message = format!("Opponent move error: {}", err),
+                        }
+                        self.board.reset_activity();
+                        if self.turn_state != TurnState::GameOver {
+                            self.turn_state = TurnState::AwaitingLocalInput;
+                        }
+                    }
+                }
+            }
         }
 
         CentralPanel::default().show(ctx, |ui| {
@@ -429,11 +483,13 @@ impl eframe::App for ShogiGame {
                     });
 
                     ui.horizontal(|ui| {
-                        if ui.button("New game").clicked() {
-                            self.new_game();
-                        }
-                        if ui.button("Undo move").clicked() {
-                            self.undo_move();
+                        if self.mode != GameMode::OnlinePvP {
+                            if ui.button("New game").clicked() {
+                                self.new_game();
+                            }
+                            if ui.button("Undo move").clicked() {
+                                self.undo_move();
+                            }
                         }
                         if ui.button(format!("Promotion: {}", self.promotion_flag)).clicked() {
                             self.promotion_flag = !self.promotion_flag;

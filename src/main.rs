@@ -6,6 +6,7 @@ mod shogi_game;
 mod board;
 mod piece_button;
 mod engine;
+mod controller;
 
 fn main() -> Result<(), eframe::Error> {
     shogi::bitboard::Factory::init();

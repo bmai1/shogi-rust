@@ -2,11 +2,26 @@ use eframe::egui::{self, CentralPanel, Context};
 use shogi::Position;
 
 use crate::board::Board;
+use crate::controller::{LobbyInfo, LobbyRole, OnlineController};
 use crate::shogi_game::{ShogiGame, GameMode};
 
 enum Screen {
     Menu,
+    Online(OnlineScreen),
     Game(ShogiGame),
+}
+
+/// Sub-states of the online flow, all driven by polling `OnlineController`.
+enum OnlineStage {
+    Browsing,
+    Waiting, // create/join in flight, or (host) waiting for a second player
+}
+
+struct OnlineScreen {
+    controller: OnlineController,
+    stage: OnlineStage,
+    lobbies: Vec<LobbyInfo>,
+    status: String,
 }
 
 pub struct ShogiApp {
@@ -17,8 +32,8 @@ pub struct ShogiApp {
 
 impl ShogiApp {
     pub fn new() -> Self {
-        Self { 
-            screen: Screen::Menu, 
+        Self {
+            screen: Screen::Menu,
             steam: None,
             menu_error: String::new(),
         }
@@ -41,11 +56,113 @@ impl ShogiApp {
         }
     }
 
-    fn start_game(&mut self, mode: GameMode) {
+    fn start_game(&mut self, mode: GameMode, net: Option<OnlineController>, local_color: Option<shogi::Color>) {
         let board = Board::new();
         let mut pos = Position::new();
         pos.set_sfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1").unwrap();
-        self.screen = Screen::Game(ShogiGame::new(pos, board, mode));
+        self.screen = Screen::Game(ShogiGame::new(pos, board, mode, net, local_color));
+    }
+
+    fn update_online_screen(&mut self, ctx: &Context) {
+        let mut back_to_menu = false;
+        let mut start: Option<(LobbyRole, ())> = None;
+
+        if let Screen::Online(online) = &mut self.screen {
+            // Resolve create/join once they land.
+            if let Some(result) = online.controller.poll_pending() {
+                match result {
+                    Ok(role) => {
+                        online.status = match role {
+                            LobbyRole::Host => "Lobby created. Waiting for an opponent...".into(),
+                            LobbyRole::Guest => "Joined! Starting game...".into(),
+                        };
+                        online.stage = OnlineStage::Waiting;
+                        if role == LobbyRole::Guest {
+                            start = Some((role, ()));
+                        }
+                    }
+                    Err(err) => {
+                        online.status = format!("Error: {err}");
+                        online.stage = OnlineStage::Browsing;
+                    }
+                }
+            }
+
+            // Host: wait for the second lobby member to show up.
+            if matches!(online.stage, OnlineStage::Waiting)
+                && online.controller.poll_opponent_joined().is_some()
+            {
+                start = Some((LobbyRole::Host, ()));
+            }
+
+            // Lobby list refresh landing.
+            if let Some(list) = online.controller.poll_lobby_list() {
+                online.lobbies = list;
+            }
+
+            CentralPanel::default().show(ctx, |ui| {
+                ui.vertical_centered(|ui| {
+                    ui.add_space(60.0);
+                    ui.heading("Online Match");
+                    ui.add_space(20.0);
+
+                    if !online.status.is_empty() {
+                        ui.label(&online.status);
+                        ui.add_space(10.0);
+                    }
+
+                    match online.stage {
+                        OnlineStage::Waiting => {
+                            ui.label("Please wait...");
+                        }
+                        OnlineStage::Browsing => {
+                            if ui.add_sized([200.0, 40.0], egui::Button::new("Host Game")).clicked() {
+                                online.controller.create_lobby();
+                                online.status = "Creating lobby...".into();
+                            }
+                            ui.add_space(10.0);
+                            if ui.add_sized([200.0, 40.0], egui::Button::new("Refresh Lobby List")).clicked() {
+                                online.controller.request_lobby_list();
+                                online.status = "Searching for lobbies...".into();
+                            }
+                            ui.add_space(20.0);
+
+                            egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
+                                if online.lobbies.is_empty() {
+                                    ui.label("No lobbies found yet.");
+                                }
+                                for lobby in online.lobbies.clone() {
+                                    ui.horizontal(|ui| {
+                                        ui.label(format!(
+                                            "Lobby ({}/2 players)",
+                                            lobby.member_count
+                                        ));
+                                        if ui.button("Join").clicked() {
+                                            online.controller.join_lobby(lobby.id);
+                                            online.status = "Joining lobby...".into();
+                                        }
+                                    });
+                                }
+                            });
+                        }
+                    }
+
+                    ui.add_space(20.0);
+                    if ui.button("Back").clicked() {
+                        online.controller.leave_lobby();
+                        back_to_menu = true;
+                    }
+                });
+            });
+        }
+
+        if let Some((role, _)) = start {
+            if let Screen::Online(online) = std::mem::replace(&mut self.screen, Screen::Menu) {
+                self.start_game(GameMode::OnlinePvP, Some(online.controller), Some(role.color()));
+            }
+        } else if back_to_menu {
+            self.screen = Screen::Menu;
+        }
     }
 }
 
@@ -57,6 +174,7 @@ impl eframe::App for ShogiApp {
         match &mut self.screen {
             Screen::Menu => {
                 let mut chosen_mode: Option<GameMode> = None;
+                let mut go_online = false;
 
                 CentralPanel::default().show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
@@ -71,7 +189,7 @@ impl eframe::App for ShogiApp {
                         if ui.add_sized([240.0, 50.0], egui::Button::new("Start Online Match")).clicked() {
                              if self.ensure_steam_initialized() {
                                 self.menu_error.clear();
-                                chosen_mode = Some(GameMode::OnlinePvP);
+                                go_online = true;
                             } else {
                                 self.menu_error = String::from(
                                     "Couldn't connect to Steam. Make sure Steam is running and you're logged in, then try again."
@@ -90,8 +208,19 @@ impl eframe::App for ShogiApp {
                 });
 
                 if let Some(mode) = chosen_mode {
-                    self.start_game(mode);
+                    self.start_game(mode, None, None);
+                } else if go_online {
+                    let client = self.steam.as_ref().unwrap().clone();
+                    self.screen = Screen::Online(OnlineScreen {
+                        controller: OnlineController::new(client),
+                        stage: OnlineStage::Browsing,
+                        lobbies: Vec::new(),
+                        status: String::new(),
+                    });
                 }
+            }
+            Screen::Online(_) => {
+                self.update_online_screen(ctx);
             }
             Screen::Game(game) => {
                 game.update(ctx, frame);
