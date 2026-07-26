@@ -17,7 +17,6 @@ pub enum GameMode {
     Sandbox,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq)]
 pub enum TurnState {
     AwaitingLocalInput,
