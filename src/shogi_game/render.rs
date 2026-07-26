@@ -157,7 +157,7 @@ impl ShogiGame {
             draw_cursor_rank as f32 * position_factor + offset_y,
         );
         let rect = Rect::from_min_size(min, Vec2::new(60.0, 60.0));
-        let cursor_stroke = egui::Stroke::new(2.0f32, egui::Color32::from_rgba_unmultiplied(200, 200, 40, 200));
+        let cursor_stroke = egui::Stroke::new(2.0f32, egui::Color32::from_rgba_unmultiplied(255, 40, 130, 200));
         ui.painter().rect_stroke(rect, 0.0, cursor_stroke, StrokeKind::Outside);
     }
 }
