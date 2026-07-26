@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-egui = "0.29.1"
-eframe = "0.29.1"
-egui_extras = { version = "*", features = ["all_loaders"] }
+egui = "0.35"
+eframe = "0.35"
+egui_extras = { version = "0.35", features = ["all_loaders"] }
 image = { version = "0.25.5", features = ["jpeg", "png"] }
 shogi = "0.12.2"
 serialport = "4.6.0"
 mouse-rs = "0.4"
-itertools = "0.13.0"
+itertools = "0.15.0"
 gilrs = "0.11.2"
 steamworks = "0.13.1"
