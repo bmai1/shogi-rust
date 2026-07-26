@@ -1,31 +1,78 @@
-use gilrs::{Event, EventType, Button};
+use gilrs::{Axis, Button, Event, EventType};
 
 use super::ShogiGame;
 
 impl ShogiGame {
-    // Drains pending gamepad events, moves the on-screen cursor with the D-pad,
-    // and returns true for exactly one frame when a "confirm" button was pressed.
     pub(super) fn poll_gamepad(&mut self) -> bool {
         let mut confirm = false;
+
         while let Some(Event { event, .. }) = self.gilrs.next_event() {
-            match event {
-                EventType::ButtonPressed(Button::DPadUp, _) => {
-                    self.gamepad_cursor[0] = (self.gamepad_cursor[0] - 1).rem_euclid(9);
-                }
-                EventType::ButtonPressed(Button::DPadDown, _) => {
-                    self.gamepad_cursor[0] = (self.gamepad_cursor[0] + 1).rem_euclid(9);
-                }
-                EventType::ButtonPressed(Button::DPadLeft, _) => {
-                    self.gamepad_cursor[1] = (self.gamepad_cursor[1] + 1).rem_euclid(9);
-                }
-                EventType::ButtonPressed(Button::DPadRight, _) => {
-                    self.gamepad_cursor[1] = (self.gamepad_cursor[1] - 1).rem_euclid(9);
-                }
-                EventType::ButtonPressed(Button::South, _) => {
-                    confirm = true;
-                }
-                _ => {}
+            if let EventType::ButtonPressed(Button::South, _) = event {
+                confirm = true;
             }
+        }
+
+        let Some((_, gamepad)) = self.gilrs.gamepads().next() else {
+            return confirm;
+        };
+
+        // D-pad
+        // Increase mod val (12) to make polling slower
+        if gamepad.is_pressed(Button::DPadUp) {
+            if self.dpad_repeat == 0 {
+                self.gamepad_cursor[0] = (self.gamepad_cursor[0] - 1).rem_euclid(9);
+            }
+            self.dpad_repeat = (self.dpad_repeat + 1) % 24;
+        } else if gamepad.is_pressed(Button::DPadDown) {
+            if self.dpad_repeat == 0 {
+                self.gamepad_cursor[0] = (self.gamepad_cursor[0] + 1).rem_euclid(9);
+            }
+            self.dpad_repeat = (self.dpad_repeat + 1) % 24;
+        } else if gamepad.is_pressed(Button::DPadLeft) {
+            if self.dpad_repeat == 0 {
+                self.gamepad_cursor[1] = (self.gamepad_cursor[1] + 1).rem_euclid(9);
+            }
+            self.dpad_repeat = (self.dpad_repeat + 1) % 24;
+        } else if gamepad.is_pressed(Button::DPadRight) {
+            if self.dpad_repeat == 0 {
+                self.gamepad_cursor[1] = (self.gamepad_cursor[1] - 1).rem_euclid(9);
+            }
+            self.dpad_repeat = (self.dpad_repeat + 1) % 24;
+        } else {
+            self.dpad_repeat = 0;
+        }
+
+        // Left stick
+        let x = gamepad.value(Axis::LeftStickX);
+        let y = gamepad.value(Axis::LeftStickY);
+
+        const DEADZONE: f32 = 0.4;
+
+        if self.stick_repeat == 0 {
+            if y < -DEADZONE {
+                self.gamepad_cursor[0] =
+                    (self.gamepad_cursor[0] + 1).clamp(0, 8);
+            }
+
+            if y > DEADZONE {
+                self.gamepad_cursor[0] =
+                    (self.gamepad_cursor[0] - 1).clamp(0, 8);
+            }
+
+            if x < -DEADZONE {
+                self.gamepad_cursor[1] =
+                    (self.gamepad_cursor[1] + 1).clamp(0, 8);
+            }
+
+            if x > DEADZONE {
+                self.gamepad_cursor[1] =
+                    (self.gamepad_cursor[1] - 1).clamp(0, 8);
+            }
+        }
+        if x.abs() > DEADZONE || y.abs() > DEADZONE {
+            self.stick_repeat = (self.stick_repeat + 1) % 8;
+        } else {
+            self.stick_repeat = 0;
         }
         confirm
     }

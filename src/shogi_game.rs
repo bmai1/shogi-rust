@@ -31,6 +31,8 @@ pub struct ShogiGame {
     error_message: String,
     gilrs: Gilrs,
     gamepad_cursor: [i32; 2], // [rank, file]
+    dpad_repeat: u8,
+    stick_repeat: u8,
     mode: GameMode,
     turn_state: TurnState,
     engine: Option<UsiEngine>,
@@ -71,6 +73,8 @@ impl ShogiGame {
             error_message: String::new(),
             gilrs,
             gamepad_cursor: [4, 4],
+            dpad_repeat: 0,
+            stick_repeat: 0,
             mode,
             turn_state,
             engine,
