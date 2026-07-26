@@ -11,3 +11,6 @@ isready
 bench
 
 setoption name FV_SCALE value 24
+
+nnue (efficiently updatable neural network) eval file, no opening book
+- extremely fast and lightweight
