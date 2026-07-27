@@ -34,8 +34,8 @@ impl Board {
         } else {
             let moves = pos.move_candidates(sq.unwrap(), p);
             for sq in moves {
-                let rank = 8 - (sq.index() / 9);
-                let file = sq.index() % 9;
+                let rank = sq.rank() as usize;
+                let file = sq.file() as usize;
                 self.active_moves[rank][file] = true;
             }
         }
@@ -64,8 +64,8 @@ impl Board {
                 for file in 0..9 {
                     let sq = Square::new(file, rank).unwrap();
                     if !pawn_files[file as usize] && pos.piece_at(sq).is_none() {
-                        let r = 8 - (sq.index() / 9);
-                        let f = sq.index() % 9;
+                        let r = sq.rank() as usize;
+                        let f = sq.file() as usize;
                         self.active_moves[r][f] = true;
                     }
                 }
@@ -75,8 +75,8 @@ impl Board {
                 for file in 0..9 {
                     let sq = Square::new(file, rank).unwrap();
                     if pos.piece_at(sq).is_none() {
-                        let r = 8 - (sq.index() / 9);
-                        let f = sq.index() % 9;
+                        let r = sq.rank() as usize;
+                        let f = sq.file() as usize;
                         self.active_moves[r][f] = true;
                     }
                 }

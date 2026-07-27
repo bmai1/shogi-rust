@@ -58,9 +58,10 @@ impl ShogiGame {
         for rank in 0..9 {
             for file in 0..9 {
                 if self.board.active_moves[rank][file] {
+                    let (draw_rank, draw_file) = self.display_coords(rank, file);
                     let center = Pos2::new(
-                        rank as f32 * position_factor + offset_x + position_factor / 2.0,
-                        file as f32 * position_factor + offset_y + position_factor / 2.0,
+                        board_size - ((draw_file + 1) as f32 * position_factor) + offset_x + position_factor / 2.0,
+                        draw_rank as f32 * position_factor + offset_y + position_factor / 2.0,
                     );
                     let fill = egui::Color32::from_rgba_unmultiplied(60, 110, 40, 128);
                     let stroke = egui::Stroke::new(1.0f32, fill);
@@ -83,6 +84,8 @@ impl ShogiGame {
         let fill = egui::Color32::from_rgba_unmultiplied(60, 110, 40, 128);
         let stroke = egui::Stroke::new(1.0f32, fill);
 
+        let perspective = self.local_color.unwrap_or(shogi::Color::Black);
+
         ui.add(egui::Image::new(egui::include_image!("../images/boards/kaya1.jpg")).fit_to_exact_size(egui::vec2(board_size, board_size)));
 
         for rank in 0..9 {
@@ -100,7 +103,7 @@ impl ShogiGame {
 
                 let sq = Square::new(file as u8, rank as u8).unwrap();
                 let curr_piece = self.pos.piece_at(sq).clone();
-                let button = piece_button::piece_button(curr_piece);
+                let button = piece_button::piece_button(curr_piece, perspective);
 
                 let clicked = ui.put(rect, button).clicked();
                 let gamepad_confirmed = confirm && cursor_rank == rank as i32 && cursor_file == file as i32;
@@ -127,7 +130,7 @@ impl ShogiGame {
             };
 
             let rect = Rect::from_min_size(Pos2::new(x, y), Vec2::new(60.0, 60.0));
-            let button = piece_button::piece_button(Some(p));
+            let button = piece_button::piece_button(Some(p), perspective);
 
             if count != 0 {
                 if self.board.active_hand == i {

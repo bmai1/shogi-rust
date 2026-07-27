@@ -34,9 +34,12 @@ pub fn piece_image_source(piece: Piece) -> ImageSource<'static> {
     }
 }
 
-pub fn piece_button(piece: Option<Piece>) -> Button<'static> {
+pub fn piece_button(piece: Option<Piece>, perspective: Color) -> Button<'static> {
     let src = match piece {
-        Some(p) => piece_image_source(p),
+        Some(p) => {
+            let display_color = if p.color == perspective { Color::Black } else { Color::White };
+            piece_image_source(Piece { piece_type: p.piece_type, color: display_color })
+        }
         None => include_image!("images/pieces/empty.png"),
     };
     let image = Image::new(src).fit_to_exact_size(Vec2::splat(60.0));
