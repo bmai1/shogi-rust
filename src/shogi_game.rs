@@ -38,6 +38,7 @@ pub struct ShogiGame {
     pending_promotion: Option<PendingPromotion>,
     gilrs: Gilrs,
     gamepad_cursor: [i32; 2], // [rank, file]
+    gamepad_active: bool,
     dpad_repeat: u8,
     stick_repeat: u8,
     mode: GameMode,
@@ -80,6 +81,7 @@ impl ShogiGame {
             error_message: String::new(),
             gilrs,
             gamepad_cursor: [4, 4],
+            gamepad_active: false,
             dpad_repeat: 0,
             stick_repeat: 0,
             mode,
