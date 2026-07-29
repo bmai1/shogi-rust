@@ -144,6 +144,7 @@ impl ShogiGame {
                         self.commit_move(Move::Normal { from: active_sq, to: to_sq, promote: true });
                     } else if eligible {
                         self.pending_promotion = Some(PendingPromotion { from: active_sq, to: to_sq, piece: ap });
+                        self.promotion_just_opened = true;
                         self.board.reset_activity();
                         return;
                     } else {

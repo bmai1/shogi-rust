@@ -58,6 +58,7 @@ fn parse_info_line(s: &str) -> Option<AnalysisLine> {
             "depth" => {
                 depth = tokens.get(i + 1)?.parse().ok()?;
                 i += 2;
+                
             }
             "multipv" => {
                 multipv = tokens.get(i + 1)?.parse().ok()?;

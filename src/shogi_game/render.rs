@@ -72,14 +72,13 @@ impl ShogiGame {
         }
     }
     
-    pub(super) fn render_pieces(&mut self, ui: &mut egui::Ui) {
+    pub(super) fn render_pieces(&mut self, ui: &mut egui::Ui, confirm: bool) {
         let input_enabled = self.turn_state == TurnState::AwaitingLocalInput && self.pending_promotion.is_none();
 
         let position_factor = 62.22;
         let (offset_x, offset_y) = (106.5, 56.5);
         let board_size = 560.0;
 
-        let confirm = self.poll_gamepad();
         let [cursor_rank, cursor_file] = self.gamepad_cursor;
 
         let fill = egui::Color32::from_rgba_unmultiplied(60, 110, 40, 128);
@@ -167,7 +166,7 @@ impl ShogiGame {
         }
     }
 
-    pub(super) fn render_promotion_prompt(&mut self, ui: &mut egui::Ui, pending: PendingPromotion) {
+    pub(super) fn render_promotion_prompt(&mut self, ui: &mut egui::Ui, pending: PendingPromotion, confirm: bool, suppress_input: bool) {
         let position_factor = 62.22;
         let (offset_x, offset_y) = (106.5, 56.5);
         let board_size = 560.0;
@@ -177,7 +176,11 @@ impl ShogiGame {
         let from_file = pending.from.file() as usize;
         let to_rank = pending.to.rank() as usize;
         let to_file = pending.to.file() as usize;
-    
+
+        let [cursor_rank, cursor_file] = self.gamepad_cursor;
+        let gamepad_picked_normal = confirm && cursor_rank == from_rank as i32 && cursor_file == from_file as i32;
+        let gamepad_picked_promoted = confirm && cursor_rank == to_rank as i32 && cursor_file == to_file as i32;
+
         let (draw_from_rank, draw_from_file) = self.display_coords(from_rank, from_file);
         let (draw_to_rank, draw_to_file) = self.display_coords(to_rank, to_file);
     
@@ -200,7 +203,8 @@ impl ShogiGame {
         // Unpromoted choice, shown back at the square the piece is moving from.
         ui.painter().rect_filled(from_rect, 0.0, egui::Color32::from_rgba_unmultiplied(20, 20, 20, 230));
         let normal_button = piece_button::piece_button(Some(pending.piece), perspective);
-        if ui.put(from_rect, normal_button).clicked() {
+        let normal_clicked = ui.put(from_rect, normal_button).clicked() || gamepad_picked_normal;
+        if normal_clicked && !suppress_input {
             self.resolve_promotion(false);
         }
     
@@ -211,7 +215,8 @@ impl ShogiGame {
             color: pending.piece.color,
         };
         let promoted_button = piece_button::piece_button(Some(promoted_piece), perspective);
-        if ui.put(to_rect, promoted_button).clicked() {
+        let promoted_clicked = ui.put(to_rect, promoted_button).clicked() || gamepad_picked_promoted;
+        if promoted_clicked && !suppress_input {
             self.resolve_promotion(true);
         }
     }

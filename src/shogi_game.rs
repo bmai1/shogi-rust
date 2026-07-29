@@ -36,6 +36,7 @@ pub struct ShogiGame {
     board: Board,
     error_message: String,
     pending_promotion: Option<PendingPromotion>,
+    promotion_just_opened: bool,
     gilrs: Gilrs,
     gamepad_cursor: [i32; 2], // [rank, file]
     gamepad_active: bool,
@@ -82,6 +83,7 @@ impl ShogiGame {
             pos,
             board,
             pending_promotion: None,
+            promotion_just_opened: false,
             error_message: String::new(),
             gilrs,
             gamepad_cursor: [4, 4],
@@ -109,6 +111,7 @@ impl ShogiGame {
 
     pub fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let confirm = self.poll_gamepad();
 
         if self.turn_state == TurnState::AwaitingOpponent {
             if let Some(engine) = &mut self.engine {
@@ -152,12 +155,14 @@ impl ShogiGame {
             egui::Frame::default()
                 .inner_margin(egui::Margin { left: 100, right: 100, top: 50, bottom: 50 })
                 .show(ui, |ui| {
-                    self.render_pieces(ui);
+                    self.render_pieces(ui, confirm);
                     self.render_grid(ui);
 
                     if let Some(pending) = self.pending_promotion.clone() {
-                        self.render_promotion_prompt(ui, pending);
+                        let suppress_input = self.promotion_just_opened;
+                        self.render_promotion_prompt(ui, pending, confirm, suppress_input);
                     }
+                    self.promotion_just_opened = false;
 
                     ui.add_space(390.0);
 
