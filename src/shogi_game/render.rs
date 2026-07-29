@@ -1,6 +1,7 @@
 use eframe::egui::{self, Rect, Vec2, Pos2, StrokeKind};
 use shogi::{Piece, Square};
 
+use crate::engine::Score;
 use crate::piece_button::{self, PIECE_TYPES};
 use super::{ShogiGame, TurnState, PendingPromotion};   // `super` reaches back to shogi_game.rs's scope
 
@@ -212,6 +213,64 @@ impl ShogiGame {
         let promoted_button = piece_button::piece_button(Some(promoted_piece), perspective);
         if ui.put(to_rect, promoted_button).clicked() {
             self.resolve_promotion(true);
+        }
+    }
+
+    pub(super) fn render_analysis_contents(&mut self, ui: &mut egui::Ui) {
+        if let Some(engine) = &mut self.engine {
+            let (lines, finished) = engine.poll_analysis();
+            if !lines.is_empty() {
+                self.analysis_lines = lines;
+            }
+            if finished {
+                self.analysis_running = false;
+            }
+        }
+
+        ui.horizontal(|ui| {
+            if self.analysis_running {
+                ui.label("Analyzing...");
+                if ui.button("Stop").clicked() {
+                    if let Some(engine) = &mut self.engine {
+                        engine.stop_analysis();
+                    }
+                }
+            } else if ui.button("Re-analyze").clicked() {
+                self.start_analysis();
+            }
+        });
+
+        ui.separator();
+
+        if self.analysis_lines.is_empty() {
+            ui.label(if self.analysis_running { "Waiting on first results..." } else { "No analysis yet." });
+            return;
+        }
+
+        let mover = self.pos.side_to_move();
+        egui::Grid::new("analysis_grid").num_columns(3).striped(true).show(ui, |ui| {
+            ui.strong("#");
+            ui.strong("Eval");
+            ui.strong("Line");
+            ui.end_row();
+
+            for line in &self.analysis_lines {
+                ui.label(format!("{}", line.multipv));
+                ui.label(Self::format_score(line.score, mover));
+                ui.label(line.pv.join(" "));
+                ui.end_row();
+            }
+        });
+    }
+
+    fn format_score(score: Score, mover: shogi::Color) -> String {
+        match score {
+            Score::Mate(n) if n > 0 => format!("Mate in {}", n),
+            Score::Mate(n) => format!("Mated in {}", -n),
+            Score::Cp(cp) => {
+                let pawns = cp as f32 / 100.0;
+                format!("{:+.2} ({:?} to move)", pawns, mover)
+            }
         }
     }
 }

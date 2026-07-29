@@ -1,4 +1,5 @@
 use shogi::Move;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -28,10 +29,69 @@ pub fn engine_path() -> PathBuf {
     }
 }
 
+// For engine analysis window
+#[derive(Clone, Copy, Debug)]
+pub enum Score {
+    Cp(i32),
+    Mate(i32),
+}
+
+#[allow(dead_code)] // depth
+#[derive(Clone, Debug)]
+pub struct AnalysisLine {
+    pub multipv: u32,
+    pub depth: u32,
+    pub score: Score,
+    pub pv: Vec<String>, // USI-format move strings, e.g. "7g7f"
+}
+
+fn parse_info_line(s: &str) -> Option<AnalysisLine> {
+    let tokens: Vec<&str> = s.split_whitespace().collect();
+    let mut depth = 0u32;
+    let mut multipv = 1u32;
+    let mut score = None;
+    let mut pv = Vec::new();
+
+    let mut i = 0;
+    while i < tokens.len() {
+        match tokens[i] {
+            "depth" => {
+                depth = tokens.get(i + 1)?.parse().ok()?;
+                i += 2;
+            }
+            "multipv" => {
+                multipv = tokens.get(i + 1)?.parse().ok()?;
+                i += 2;
+            }
+            "score" => match *tokens.get(i + 1)? {
+                "cp" => {
+                    score = Some(Score::Cp(tokens.get(i + 2)?.parse().ok()?));
+                    i += 3;
+                }
+                "mate" => {
+                    score = Some(Score::Mate(tokens.get(i + 2)?.parse().ok()?));
+                    i += 3;
+                }
+                _ => i += 1,
+            },
+            "pv" => {
+                pv = tokens[i + 1..].iter().map(|s| s.to_string()).collect();
+                break;
+            }
+            _ => i += 1,
+        }
+    }
+
+    // Ignore heartbeat "info" lines (nps/hashfull-only) that carry no line to show.
+    Some(AnalysisLine { multipv, depth, score: score?, pv: if pv.is_empty() { return None } else { pv } })
+}
+
 pub struct UsiEngine {
     _child: Child, // kept alive so the process isn't dropped/killed early
     stdin: ChildStdin,
     rx: Receiver<String>,
+    analysis_lines: HashMap<u32, AnalysisLine>,
+    analysis_bestmove: Option<String>,
 }
 
 impl UsiEngine {
@@ -60,11 +120,15 @@ impl UsiEngine {
             }
         });
 
-        let mut engine = Self { _child: child, stdin, rx };
+        let mut engine = Self {
+            _child: child,
+            stdin,
+            rx,
+            analysis_lines: HashMap::new(),
+            analysis_bestmove: None,
+        };
         engine.handshake()?;
-
         println!("YaneuraOu started.");
-        
         Ok(engine)
     }
 
@@ -100,5 +164,40 @@ impl UsiEngine {
             }
         }
         None
+    }
+
+    /// Starts (or restarts) a multi-line analysis of `sfen`, keeping the
+    /// engine's `MultiPV` best lines. Bounded by `think_ms`, same as a
+    /// normal move request — the engine will emit a `bestmove` when done.
+    pub fn start_analysis(&mut self, sfen: &str, multipv: u32, think_ms: i32) {
+        self.analysis_lines.clear();
+        self.analysis_bestmove = None;
+        let _ = writeln!(self.stdin, "setoption name MultiPV value {}", multipv.max(1));
+        let _ = writeln!(self.stdin, "position sfen {}", sfen);
+        let _ = writeln!(self.stdin, "go byoyomi {}", think_ms);
+    }
+
+    /// Asks the engine to stop early and report whatever it currently has.
+    pub fn stop_analysis(&mut self) {
+        let _ = writeln!(self.stdin, "stop");
+    }
+
+    /// Call once per frame while the analysis window is open. Returns the
+    /// current top-N lines sorted by rank, and whether the engine has
+    /// finished (sent `bestmove`).
+    pub fn poll_analysis(&mut self) -> (Vec<AnalysisLine>, bool) {
+        while let Ok(line) = self.rx.try_recv() {
+            if let Some(rest) = line.strip_prefix("info ") {
+                if let Some(parsed) = parse_info_line(rest) {
+                    self.analysis_lines.insert(parsed.multipv, parsed);
+                }
+            } else if let Some(rest) = line.strip_prefix("bestmove ") {
+                self.analysis_bestmove = rest.split_whitespace().next().map(String::from);
+            }
+        }
+
+        let mut lines: Vec<AnalysisLine> = self.analysis_lines.values().cloned().collect();
+        lines.sort_by_key(|l| l.multipv);
+        (lines, self.analysis_bestmove.is_some())
     }
 }

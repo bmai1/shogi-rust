@@ -264,4 +264,16 @@ impl ShogiGame {
             self.error_message = format!("Checkmate! {} wins.", winner);
         }
     }
+
+    pub(super) fn start_analysis(&mut self) {
+        let sfen = self.pos.to_sfen();
+        let multipv = self.analysis_multipv;
+        let think_ms = self.engine_think_ms;
+        if let Some(engine) = &mut self.engine {
+            engine.start_analysis(&sfen, multipv, think_ms);
+            self.analysis_running = true;
+            self.analysis_lines.clear();
+            self.show_analysis_window = true;
+        }
+    }
 }

@@ -46,6 +46,10 @@ pub struct ShogiGame {
     engine: Option<UsiEngine>,
     engine_think_ms: i32,
     show_engine_settings: bool,
+    show_analysis_window: bool,
+    analysis_lines: Vec<crate::engine::AnalysisLine>,
+    analysis_running: bool,
+    analysis_multipv: u32,
     return_to_menu: bool,
     net: Option<OnlineController>,
     local_color: Option<shogi::Color>,
@@ -89,6 +93,10 @@ impl ShogiGame {
             engine,
             engine_think_ms: 3000,
             show_engine_settings: false,
+            show_analysis_window: false,
+            analysis_lines: Vec::new(),
+            analysis_running: false,
+            analysis_multipv: 10,
             return_to_menu: false,
             net,
             local_color, // Use this to flip White board
@@ -181,6 +189,9 @@ impl ShogiGame {
                                 self.show_engine_settings = true;
                             }
                             let engine_busy = self.turn_state == TurnState::AwaitingOpponent;
+                            if ui.add_enabled(!engine_busy && !self.analysis_running, egui::Button::new("Engine Analysis")).clicked() {
+                                self.start_analysis();
+                            }
                             if ui.add_enabled(!engine_busy, egui::Button::new("Make Engine Move")).clicked() {
                                 self.request_engine_move();
                             }
@@ -206,7 +217,22 @@ impl ShogiGame {
                                 .step_by(1000.0)
                                 .text("Thinking time (ms)")
                         );
+                        ui.add(
+                            egui::Slider::new(&mut self.analysis_multipv, 1..=15)
+                                .text("Analysis lines")
+                        );
                     });
+
+                let mut show_analysis = self.show_analysis_window;
+                egui::Window::new("Engine Analysis")
+                    .open(&mut show_analysis)
+                    .resizable(true)
+                    .collapsible(false)
+                    .default_width(420.0)
+                    .show(ui, |ui| {
+                        self.render_analysis_contents(ui);
+                    });
+                self.show_analysis_window = show_analysis;
         });
     }
 }
