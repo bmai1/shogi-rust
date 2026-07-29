@@ -5,6 +5,9 @@ use crate::board::Board;
 use crate::controller::{LobbyInfo, LobbyRole, OnlineController};
 use crate::shogi_game::{ShogiGame, GameMode};
 
+const MENU_SIZE: egui::Vec2 = egui::Vec2::new(780.0, 740.0);
+const GAME_SIZE: egui::Vec2 = egui::Vec2::new(1220.0, 740.0);
+
 enum Screen {
     Menu,
     Online(OnlineScreen),
@@ -56,10 +59,11 @@ impl ShogiApp {
         }
     }
 
-    fn start_game(&mut self, mode: GameMode, net: Option<OnlineController>, local_color: Option<shogi::Color>) {
+    fn start_game(&mut self, ui: &mut egui::Ui, mode: GameMode, net: Option<OnlineController>, local_color: Option<shogi::Color>) {
         let board = Board::new();
         let mut pos = Position::new();
         pos.set_sfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1").unwrap();
+        ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(GAME_SIZE));
         self.screen = Screen::Game(ShogiGame::new(pos, board, mode, net, local_color));
     }
 
@@ -168,7 +172,7 @@ impl ShogiApp {
 
         if let Some((role, _)) = start {
             if let Screen::Online(online) = std::mem::replace(&mut self.screen, Screen::Menu) {
-                self.start_game(GameMode::OnlinePvP, Some(online.controller), Some(role.color()));
+                self.start_game(ui, GameMode::OnlinePvP, Some(online.controller), Some(role.color()));
             }
         } else if back_to_menu {
             self.screen = Screen::Menu;
@@ -218,7 +222,7 @@ impl eframe::App for ShogiApp {
                 });
 
                 if let Some(mode) = chosen_mode {
-                    self.start_game(mode, None, None);
+                    self.start_game(ui, mode, None, None);
                 } else if go_online {
                     let client = self.steam.as_ref().unwrap().clone();
                     self.screen = Screen::Online(OnlineScreen {
@@ -235,6 +239,7 @@ impl eframe::App for ShogiApp {
             Screen::Game(game) => {
                 game.ui(ui, frame);
                 if game.wants_return_to_menu() {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::InnerSize(MENU_SIZE));
                     self.screen = Screen::Menu;
                 }
             }

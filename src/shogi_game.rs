@@ -157,6 +157,7 @@ impl ShogiGame {
                 .show(ui, |ui| {
                     self.render_pieces(ui, confirm);
                     self.render_grid(ui);
+                    self.render_sprite(ui);
 
                     if let Some(pending) = self.pending_promotion.clone() {
                         let suppress_input = self.promotion_just_opened;
@@ -164,7 +165,7 @@ impl ShogiGame {
                     }
                     self.promotion_just_opened = false;
 
-                    ui.add_space(390.0);
+                    ui.add_space(-50.0); // To fix margin from sprite, otherwise add_space(390.0)
 
                     ui.horizontal(|ui| {
                         let mode_label = match self.mode {

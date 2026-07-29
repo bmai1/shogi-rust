@@ -20,6 +20,15 @@ impl ShogiGame {
         }
     }
 
+    pub(super) fn render_sprite(&mut self, ui: &mut egui::Ui) {
+        let sprite_size = Vec2::new(750.0, 750.0);
+        let rect = Rect::from_min_size(Pos2::new(550.0, -50.0), sprite_size);
+        ui.put(
+            rect,
+            egui::Image::new(egui::include_image!("../images/sprites/arcueid_3_0.png")).fit_to_exact_size(sprite_size),
+        );
+    }
+
     pub(super) fn render_grid(&mut self, ui: &mut egui::Ui) { 
         let position_factor = 62.22;
         let (offset_x, offset_y) = (106.5, 56.5);
