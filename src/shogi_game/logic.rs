@@ -1,11 +1,69 @@
-use shogi::{Position, Square, Move, Piece};
+use shogi::{Color, Piece, PieceType, Position, Square, Move};
 
 use crate::board::Board;
-use crate::piece_button::{self, PIECE_TYPES};
-use super::{ShogiGame, TurnState, GameMode};
+use crate::piece_button::PIECE_TYPES;
+use super::{ShogiGame, TurnState, GameMode, PendingPromotion};
 
 impl ShogiGame {
-    // Sends our move to the opponent and locks local input until their reply arrives
+    fn is_promotable(piece_type: PieceType) -> bool {
+        matches!(
+            piece_type,
+            PieceType::Pawn | PieceType::Lance | PieceType::Knight
+                | PieceType::Silver | PieceType::Bishop | PieceType::Rook
+        )
+    }
+
+    fn in_promotion_zone(color: Color, rank: usize) -> bool {
+        match color {
+            Color::Black => rank < 3,
+            Color::White => rank > 5,
+        }
+    }
+
+    /// A piece with no legal square left to advance to must promote —
+    /// pawn/lance reaching the far rank, knight reaching the far two ranks.
+    fn is_forced_promotion(piece_type: PieceType, color: Color, to_rank: usize) -> bool {
+        match piece_type {
+            PieceType::Pawn | PieceType::Lance => {
+                (color == Color::Black && to_rank == 0) || (color == Color::White && to_rank == 8)
+            }
+            PieceType::Knight => {
+                (color == Color::Black && to_rank <= 1) || (color == Color::White && to_rank >= 7)
+            }
+            _ => false,
+        }
+    }
+
+    /// Actually applies a move to the position, then advances turn state /
+    /// notifies the engine or opponent — shared by direct moves, drops, and
+    /// resolved promotion prompts.
+    fn commit_move(&mut self, m: Move) {
+        self.error_message = format!("{}", m);
+        match self.pos.make_move(m) {
+            Ok(_) => {
+                self.error_message = format!("{}", m);
+                self.check_game_over();
+                if self.turn_state != TurnState::GameOver {
+                    match self.mode {
+                        GameMode::VsEngine => self.request_engine_move(),
+                        GameMode::OnlinePvP => self.send_local_move(&m),
+                        GameMode::Sandbox => {}
+                    }
+                }
+            }
+            Err(err) => {
+                self.error_message = format!("Error in make_move: {}", err);
+            }
+        }
+    }
+
+    pub(super) fn resolve_promotion(&mut self, promote: bool) {
+        if let Some(pending) = self.pending_promotion.take() {
+            let m = Move::Normal { from: pending.from, to: pending.to, promote };
+            self.commit_move(m);
+        }
+    }
+
     fn send_local_move(&mut self, mv: &Move) {
         if let Some(net) = &self.net {
             if net.send_move(mv) {
@@ -32,32 +90,20 @@ impl ShogiGame {
 
                 if can_move {
                     let to_sq = Square::new(file as u8, rank as u8).unwrap();
-                    let m = if self.promotion_flag
-                        && !piece_button::is_promoted(ap.piece_type)
-                        && ((rank < 3 && self.pos.side_to_move() == shogi::Color::Black)
-                            || (rank > 5 && self.pos.side_to_move() == shogi::Color::White))
-                    {
-                        Move::Normal { from: active_sq, to: to_sq, promote: true }
-                    } else {
-                        Move::Normal { from: active_sq, to: to_sq, promote: false }
-                    };
+                    let from_rank = active[0] as usize;
 
-                    self.error_message = format!("{}", m);
-                    match self.pos.make_move(m) {
-                        Ok(_) => {
-                            self.error_message = format!("{}", m);
-                            self.check_game_over();
-                            if self.turn_state != TurnState::GameOver {
-                                match self.mode {
-                                    GameMode::VsEngine => self.request_engine_move(),
-                                    GameMode::OnlinePvP => self.send_local_move(&m),
-                                    GameMode::Sandbox => {}
-                                }
-                            }
-                        }
-                        Err(err) => {
-                            self.error_message = format!("Error in make_move: {}", err);
-                        }
+                    let eligible = Self::is_promotable(ap.piece_type)
+                        && (Self::in_promotion_zone(ap.color, from_rank)
+                            || Self::in_promotion_zone(ap.color, rank));
+
+                    if eligible && Self::is_forced_promotion(ap.piece_type, ap.color, rank) {
+                        self.commit_move(Move::Normal { from: active_sq, to: to_sq, promote: true });
+                    } else if eligible {
+                        self.pending_promotion = Some(PendingPromotion { from: active_sq, to: to_sq, piece: ap });
+                        self.board.reset_activity();
+                        return;
+                    } else {
+                        self.commit_move(Move::Normal { from: active_sq, to: to_sq, promote: false });
                     }
                 }
 
@@ -81,29 +127,12 @@ impl ShogiGame {
                 self.board.set_active_moves(&self.pos, Some(sq), piece);
             }
         } else if active_hand != usize::MAX {
-            if (self.pos.side_to_move() == shogi::Color::Black && active_hand >= 7)
-                || (self.pos.side_to_move() == shogi::Color::White && active_hand < 7)
+            if (self.pos.side_to_move() == Color::Black && active_hand >= 7)
+                || (self.pos.side_to_move() == Color::White && active_hand < 7)
             {
                 let to_sq = Square::new(file as u8, rank as u8).unwrap();
                 let m = Move::Drop { to: to_sq, piece_type: PIECE_TYPES[active_hand].piece_type };
-
-                self.error_message = format!("{}", m);
-                match self.pos.make_move(m) {
-                    Ok(_) => {
-                        self.error_message = format!("{}", m);
-                        self.check_game_over();
-                        if self.turn_state != TurnState::GameOver {
-                            match self.mode {
-                                GameMode::VsEngine => self.request_engine_move(),
-                                GameMode::OnlinePvP => self.send_local_move(&m),
-                                GameMode::Sandbox => {}
-                            }
-                        }
-                    }
-                    Err(err) => {
-                        self.error_message = format!("Error in make_move: {}", err);
-                    }
-                }
+                self.commit_move(m);
             }
             self.board.reset_activity();
         }
@@ -121,12 +150,14 @@ impl ShogiGame {
         self.pos = Position::new();
         self.pos.set_sfen("lnsgkgsnl/1r5b1/ppppppppp/9/9/9/PPPPPPPPP/1B5R1/LNSGKGSNL b - 1").unwrap();
         self.error_message.clear();
+        self.pending_promotion = None;
         self.turn_state = TurnState::AwaitingLocalInput;
     }
 
     pub(super) fn undo_move(&mut self) {
         self.pos.unmake_move().unwrap();
         self.error_message.clear();
+        self.pending_promotion = None;
         self.turn_state = TurnState::AwaitingLocalInput;
     }
 

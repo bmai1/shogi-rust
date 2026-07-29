@@ -1,5 +1,5 @@
 use eframe::egui::{CentralPanel};
-use shogi::Position;
+use shogi::{Piece, Position, Square};
 use gilrs::Gilrs;
 
 use crate::board::Board;
@@ -24,11 +24,18 @@ pub enum TurnState {
     GameOver,
 }
 
+#[derive(Clone)]
+pub(crate) struct PendingPromotion {
+    pub from: Square,
+    pub to: Square,
+    pub piece: Piece, // the moving piece, in its unpromoted form
+}
+
 pub struct ShogiGame {
     pos: Position,
     board: Board,
-    promotion_flag: bool,
     error_message: String,
+    pending_promotion: Option<PendingPromotion>,
     gilrs: Gilrs,
     gamepad_cursor: [i32; 2], // [rank, file]
     dpad_repeat: u8,
@@ -69,7 +76,7 @@ impl ShogiGame {
         Self {
             pos,
             board,
-            promotion_flag: false,
+            pending_promotion: None,
             error_message: String::new(),
             gilrs,
             gamepad_cursor: [4, 4],
@@ -136,6 +143,10 @@ impl ShogiGame {
                     self.render_pieces(ui);
                     self.render_grid(ui);
 
+                    if let Some(pending) = self.pending_promotion.clone() {
+                        self.render_promotion_prompt(ui, pending);
+                    }
+
                     ui.add_space(390.0);
 
                     ui.horizontal(|ui| {
@@ -158,9 +169,6 @@ impl ShogiGame {
                             if ui.button("Undo move").clicked() {
                                 self.undo_move();
                             }
-                        }
-                        if ui.button(format!("Promotion: {}", self.promotion_flag)).clicked() {
-                            self.promotion_flag = !self.promotion_flag;
                         }
                     });
                     ui.horizontal(|ui| {

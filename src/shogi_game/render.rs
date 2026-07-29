@@ -1,8 +1,8 @@
 use eframe::egui::{self, Rect, Vec2, Pos2, StrokeKind};
-use shogi::Square;
+use shogi::{Piece, Square};
 
 use crate::piece_button::{self, PIECE_TYPES};
-use super::{ShogiGame, TurnState};   // `super` reaches back to shogi_game.rs's scope
+use super::{ShogiGame, TurnState, PendingPromotion};   // `super` reaches back to shogi_game.rs's scope
 
 impl ShogiGame {
     pub(super) fn is_flipped(&self) -> bool {
@@ -72,7 +72,7 @@ impl ShogiGame {
     }
     
     pub(super) fn render_pieces(&mut self, ui: &mut egui::Ui) {
-        let input_enabled = self.turn_state == TurnState::AwaitingLocalInput;
+        let input_enabled = self.turn_state == TurnState::AwaitingLocalInput && self.pending_promotion.is_none();
 
         let position_factor = 62.22;
         let (offset_x, offset_y) = (106.5, 56.5);
@@ -162,5 +162,54 @@ impl ShogiGame {
         let rect = Rect::from_min_size(min, Vec2::new(60.0, 60.0));
         let cursor_stroke = egui::Stroke::new(2.0f32, egui::Color32::from_rgba_unmultiplied(255, 40, 130, 200));
         ui.painter().rect_stroke(rect, 0.0, cursor_stroke, StrokeKind::Outside);
+    }
+
+    pub(super) fn render_promotion_prompt(&mut self, ui: &mut egui::Ui, pending: PendingPromotion) {
+        let position_factor = 62.22;
+        let (offset_x, offset_y) = (106.5, 56.5);
+        let board_size = 560.0;
+        let perspective = self.local_color.unwrap_or(shogi::Color::Black);
+    
+        let from_rank = pending.from.rank() as usize;
+        let from_file = pending.from.file() as usize;
+        let to_rank = pending.to.rank() as usize;
+        let to_file = pending.to.file() as usize;
+    
+        let (draw_from_rank, draw_from_file) = self.display_coords(from_rank, from_file);
+        let (draw_to_rank, draw_to_file) = self.display_coords(to_rank, to_file);
+    
+        let square_rect = |draw_rank: usize, draw_file: usize| {
+            Rect::from_min_size(
+                Pos2::new(
+                    board_size - ((draw_file + 1) as f32 * position_factor) + offset_x,
+                    draw_rank as f32 * position_factor + offset_y,
+                ),
+                Vec2::new(60.0, 60.0),
+            )
+        };
+        let from_rect = square_rect(draw_from_rank, draw_from_file);
+        let to_rect = square_rect(draw_to_rank, draw_to_file);
+    
+        // Dim the board so the choice reads as a modal.
+        let board_rect = Rect::from_min_size(Pos2::new(offset_x, offset_y), Vec2::new(board_size, board_size));
+        ui.painter().rect_filled(board_rect, 0.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 140));
+    
+        // Unpromoted choice, shown back at the square the piece is moving from.
+        ui.painter().rect_filled(from_rect, 0.0, egui::Color32::from_rgba_unmultiplied(20, 20, 20, 230));
+        let normal_button = piece_button::piece_button(Some(pending.piece), perspective);
+        if ui.put(from_rect, normal_button).clicked() {
+            self.resolve_promotion(false);
+        }
+    
+        // Promoted choice, shown at the square the piece is moving to.
+        ui.painter().rect_filled(to_rect, 0.0, egui::Color32::from_rgba_unmultiplied(20, 20, 20, 230));
+        let promoted_piece = Piece {
+            piece_type: piece_button::promoted_piecetype(pending.piece.piece_type),
+            color: pending.piece.color,
+        };
+        let promoted_button = piece_button::piece_button(Some(promoted_piece), perspective);
+        if ui.put(to_rect, promoted_button).clicked() {
+            self.resolve_promotion(true);
+        }
     }
 }

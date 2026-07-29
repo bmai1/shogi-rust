@@ -46,6 +46,7 @@ pub fn piece_button(piece: Option<Piece>, perspective: Color) -> Button<'static>
     Button::image(image).frame(false).min_size(Vec2::splat(60.0))
 }
 
+#[allow(dead_code)]
 pub fn is_promoted(piece_type: PieceType) -> bool {
     matches!(
         piece_type,
@@ -54,7 +55,6 @@ pub fn is_promoted(piece_type: PieceType) -> bool {
     )
 }
 
-#[allow(dead_code)]
 pub fn promoted_piecetype(piece_type: PieceType) -> PieceType {
     match piece_type {
         PieceType::Silver => PieceType::ProSilver,
