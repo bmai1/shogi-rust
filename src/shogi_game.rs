@@ -105,12 +105,13 @@ impl ShogiGame {
         if self.turn_state == TurnState::AwaitingOpponent {
             if let Some(engine) = &mut self.engine {
                 if let Some(mv) = engine.poll_bestmove() {
+                    let mover = self.pos.side_to_move();
                     match self.pos.make_move(mv) {
                         Ok(_) => {
                             self.error_message = format!("Engine played: {}", mv);
                             self.check_game_over();
                         }
-                        Err(err) => self.error_message = format!("Engine move error: {}", err),
+                        Err(err) => self.resolve_move_error(mover, err),
                     }
                     self.board.reset_activity();
                     if self.turn_state != TurnState::GameOver {
@@ -122,12 +123,13 @@ impl ShogiGame {
             if self.mode == GameMode::OnlinePvP {
                 if let Some(net) = &self.net {
                     if let Some(mv) = net.poll_move() {
+                        let mover = self.pos.side_to_move();
                         match self.pos.make_move(mv) {
                             Ok(_) => {
                                 self.error_message = format!("Opponent played: {}", mv);
                                 self.check_game_over();
                             }
-                            Err(err) => self.error_message = format!("Opponent move error: {}", err),
+                            Err(err) => self.resolve_move_error(mover, err),
                         }
                         self.board.reset_activity();
                         if self.turn_state != TurnState::GameOver {

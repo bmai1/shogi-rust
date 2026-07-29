@@ -1,4 +1,4 @@
-use shogi::{Color, Piece, PieceType, Position, Square, Move};
+use shogi::{Color, MoveError, Piece, PieceType, Position, Square, Move};
 
 use crate::board::Board;
 use crate::piece_button::PIECE_TYPES;
@@ -38,7 +38,7 @@ impl ShogiGame {
     /// notifies the engine or opponent — shared by direct moves, drops, and
     /// resolved promotion prompts.
     fn commit_move(&mut self, m: Move) {
-        self.error_message = format!("{}", m);
+        let mover = self.pos.side_to_move();
         match self.pos.make_move(m) {
             Ok(_) => {
                 self.error_message = format!("{}", m);
@@ -51,9 +51,53 @@ impl ShogiGame {
                     }
                 }
             }
-            Err(err) => {
-                self.error_message = format!("Error in make_move: {}", err);
+            Err(err) => self.resolve_move_error(mover, err),
+        }
+    }
+
+    /// Handles a rejected make_move: repetition and perpetual check end the
+    /// game outright (the move was never applied — position is unchanged).
+    /// Anything else (InCheck, Nifu, Uchifuzume, ...) means the UI offered
+    /// an illegal move, which shouldn't happen but is reported rather than
+    /// silently dropped.
+    pub(super) fn resolve_move_error(&mut self, mover: Color, err: MoveError) {
+        match err {
+            MoveError::Repetition => {
+                self.turn_state = TurnState::GameOver;
+                self.error_message = "Draw by repetition (sennichite).".into();
             }
+            MoveError::PerpetualCheckWin => {
+                self.turn_state = TurnState::GameOver;
+                self.error_message = format!(
+                    "{} wins — opponent forced an illegal perpetual check.",
+                    Self::color_name(mover)
+                );
+            }
+            MoveError::PerpetualCheckLose => {
+                self.turn_state = TurnState::GameOver;
+                self.error_message = format!(
+                    "{} wins — {} attempted an illegal perpetual check.",
+                    Self::color_name(Self::other(mover)),
+                    Self::color_name(mover)
+                );
+            }
+            other => {
+                self.error_message = format!("Error in make_move: {}", other);
+            }
+        }
+    }
+
+    fn other(c: Color) -> Color {
+        match c {
+            Color::Black => Color::White,
+            Color::White => Color::Black,
+        }
+    }
+
+    fn color_name(c: Color) -> &'static str {
+        match c {
+            Color::Black => "Black",
+            Color::White => "White",
         }
     }
 
