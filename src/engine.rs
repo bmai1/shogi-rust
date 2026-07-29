@@ -13,19 +13,21 @@ const CREATE_NO_WINDOW: u32 = 0x08000000;
 
 pub fn engine_path() -> PathBuf {
     #[cfg(debug_assertions)]
-    {
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("yaneuraou")
-            .join("YaneuraOu_NNUE_halfkp_256x2_32_32-V900Git_AVX2.exe")
-    }
+    let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("yaneuraou");
     #[cfg(not(debug_assertions))]
+    let base = std::env::current_exe()
+        .expect("Failed to get current exe path")
+        .parent()
+        .expect("Exe has no parent dir")
+        .join("yaneuraou");
+
+    #[cfg(target_os = "windows")]
     {
-        std::env::current_exe()
-            .expect("Failed to get current exe path")
-            .parent()
-            .expect("Exe has no parent dir")
-            .join("yaneuraou")
-            .join("YaneuraOu_NNUE_halfkp_256x2_32_32-V900Git_AVX2.exe")
+        base.join("YaneuraOu_NNUE_halfkp_256x2_32_32-V900Git_AVX2.exe")
+    }
+    #[cfg(all(target_os = "macos"))]
+    {
+        base.join("YaneuraOu_NNUE_halfkp_256x2_32_32-V900Git_APPLEAVX2")
     }
 }
 
