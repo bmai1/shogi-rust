@@ -3,6 +3,7 @@ use shogi::{Color, MoveError, Piece, PieceType, Position, Square, Move};
 use crate::board::Board;
 use crate::piece_button::PIECE_TYPES;
 use super::{ShogiGame, TurnState, GameMode, PendingPromotion};
+// use super::quality::AnalysisPurpose;
 
 impl ShogiGame {
     fn is_promotable(piece_type: PieceType) -> bool {
@@ -34,14 +35,14 @@ impl ShogiGame {
         }
     }
 
-    /// Actually applies a move to the position, then advances turn state /
-    /// notifies the engine or opponent — shared by direct moves, drops, and
-    /// resolved promotion prompts.
+    /// Apply move to the position, advances turn state / notify the engine or opponent, shared by direct moves, drops, resolved promotion prompts.
     fn commit_move(&mut self, m: Move) {
         let mover = self.pos.side_to_move();
+        let pre_sfen = self.pos.to_sfen();
         match self.pos.make_move(m) {
             Ok(_) => {
                 self.error_message = format!("{}", m);
+                self.maybe_score_move(m, mover, pre_sfen);
                 self.check_game_over();
                 if self.turn_state != TurnState::GameOver {
                     match self.mode {
@@ -55,11 +56,20 @@ impl ShogiGame {
         }
     }
 
-    /// Handles a rejected make_move: repetition and perpetual check end the
-    /// game outright (the move was never applied — position is unchanged).
-    /// Anything else (InCheck, Nifu, Uchifuzume, ...) means the UI offered
-    /// an illegal move, which shouldn't happen but is reported rather than
-    /// silently dropped.
+    pub(super) fn start_analysis(&mut self) {
+        let sfen = self.pos.to_sfen();
+        let multipv = self.analysis_multipv;
+        let think_ms = self.quality_think_ms;
+        if let Some(engine) = &mut self.analysis_engine {
+            engine.start_analysis(&sfen, multipv, think_ms);
+            self.analysis_running = true;
+            self.analysis_lines.clear();
+            self.analysis_purpose = Some(crate::shogi_game::quality::AnalysisPurpose::Manual);
+            self.show_analysis_window = true;
+        }
+    }
+
+    /// Handles a rejected make_move: repetition and perpetual
     pub(super) fn resolve_move_error(&mut self, mover: Color, err: MoveError) {
         match err {
             MoveError::Repetition => {
@@ -185,7 +195,7 @@ impl ShogiGame {
 
     pub(super) fn request_engine_move(&mut self) {
         if let Some(engine) = &mut self.engine {
-            engine.request_move(&self.pos.to_sfen(), self.engine_think_ms);
+            engine.request_move(&self.pos.to_sfen(), self.quality_think_ms);
             self.turn_state = TurnState::AwaitingOpponent;
         }
     }
@@ -263,18 +273,6 @@ impl ShogiGame {
                 shogi::Color::White => "Black",
             };
             self.error_message = format!("Checkmate! {} wins.", winner);
-        }
-    }
-
-    pub(super) fn start_analysis(&mut self) {
-        let sfen = self.pos.to_sfen();
-        let multipv = self.analysis_multipv;
-        let think_ms = self.engine_think_ms;
-        if let Some(engine) = &mut self.engine {
-            engine.start_analysis(&sfen, multipv, think_ms);
-            self.analysis_running = true;
-            self.analysis_lines.clear();
-            self.show_analysis_window = true;
         }
     }
 }

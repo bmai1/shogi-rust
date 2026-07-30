@@ -1,4 +1,4 @@
-use eframe::egui::{CentralPanel};
+use eframe::egui::{CentralPanel, Rect, Pos2, Vec2};
 use shogi::{Piece, Position, Square};
 use gilrs::Gilrs;
 
@@ -9,6 +9,9 @@ use crate::controller::OnlineController;
 mod logic;
 mod render;
 mod input;
+mod quality;
+
+use self::quality::{AnalysisPurpose, MoveQuality};
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum GameMode {
@@ -45,12 +48,15 @@ pub struct ShogiGame {
     mode: GameMode,
     turn_state: TurnState,
     engine: Option<UsiEngine>,
-    engine_think_ms: i32,
+    analysis_engine: Option<UsiEngine>,
+    analysis_purpose: Option<AnalysisPurpose>,
+    analysis_running: bool,
+    analysis_lines: Vec<crate::engine::AnalysisLine>,
+    analysis_multipv: u32,
+    quality_think_ms: i32,
+    last_quality: Option<MoveQuality>,
     show_engine_settings: bool,
     show_analysis_window: bool,
-    analysis_lines: Vec<crate::engine::AnalysisLine>,
-    analysis_running: bool,
-    analysis_multipv: u32,
     return_to_menu: bool,
     net: Option<OnlineController>,
     local_color: Option<shogi::Color>,
@@ -69,6 +75,12 @@ impl ShogiGame {
         let engine = match mode {
             GameMode::VsEngine | GameMode::Sandbox => Some (
                 UsiEngine::spawn(&engine::engine_path()).expect("Failed to start YaneuraOu")
+            ),
+            GameMode::OnlinePvP => None,
+        };
+        let analysis_engine = match mode {
+            GameMode::VsEngine | GameMode::Sandbox => Some (
+                UsiEngine::spawn(&engine::engine_path()).expect("Failed to start YaneuraOu (analysis)")
             ),
             GameMode::OnlinePvP => None,
         };
@@ -93,12 +105,15 @@ impl ShogiGame {
             mode,
             turn_state,
             engine,
-            engine_think_ms: 3000,
+            analysis_engine,
+            analysis_purpose: None,
+            analysis_running: false,
+            analysis_lines: Vec::new(),
+            analysis_multipv: 10,
+            quality_think_ms: 800,
+            last_quality: None,
             show_engine_settings: false,
             show_analysis_window: false,
-            analysis_lines: Vec::new(),
-            analysis_running: false,
-            analysis_multipv: 10,
             return_to_menu: false,
             net,
             local_color, // Use this to flip White board
@@ -112,6 +127,7 @@ impl ShogiGame {
     pub fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
         let confirm = self.poll_gamepad();
+        self.poll_analysis_engine();
 
         if self.turn_state == TurnState::AwaitingOpponent {
             if let Some(engine) = &mut self.engine {
@@ -165,19 +181,11 @@ impl ShogiGame {
                     }
                     self.promotion_just_opened = false;
 
-                    ui.add_space(-50.0); // To fix margin from sprite, otherwise add_space(390.0)
-
-                    ui.horizontal(|ui| {
-                        let mode_label = match self.mode {
-                            GameMode::VsEngine => "vs Engine",
-                            GameMode::OnlinePvP => "Online",
-                            GameMode::Sandbox => "Sandbox",
-                        };
-                        ui.label(format!("Mode: {}", mode_label));
-                        if ui.button("Menu").clicked() {
-                            self.return_to_menu = true;
-                        }
-                    });
+                    let board_bottom = Rect::from_min_size(
+                        Pos2::new(50.0, 56.5 /* offset_y */ + 560.0 /* board_size */ + 20.0),
+                        Vec2::ZERO,
+                    );
+                    ui.advance_cursor_after_rect(board_bottom);
 
                     ui.horizontal(|ui| {
                         if self.mode != GameMode::OnlinePvP {
@@ -194,10 +202,14 @@ impl ShogiGame {
                             if ui.button("Engine Settings").clicked() {
                                 self.show_engine_settings = true;
                             }
-                            let engine_busy = self.turn_state == TurnState::AwaitingOpponent;
-                            if ui.add_enabled(!engine_busy && !self.analysis_running, egui::Button::new("Engine Analysis")).clicked() {
+                        }
+                        if self.analysis_engine.is_some() {
+                            if ui.add_enabled(!self.analysis_running, egui::Button::new("Engine Analysis")).clicked() {
                                 self.start_analysis();
                             }
+                        }
+                        if self.engine.is_some() {
+                            let engine_busy = self.turn_state == TurnState::AwaitingOpponent;
                             if ui.add_enabled(!engine_busy, egui::Button::new("Make Engine Move")).clicked() {
                                 self.request_engine_move();
                             }
@@ -219,7 +231,7 @@ impl ShogiGame {
                     .collapsible(false)
                     .show(ui, |ui| {
                         ui.add(
-                            egui::Slider::new(&mut self.engine_think_ms, 1000..=10000)
+                            egui::Slider::new(&mut self.quality_think_ms, 1000..=10000)
                                 .step_by(1000.0)
                                 .text("Thinking time (ms)")
                         );
