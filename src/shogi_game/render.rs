@@ -4,6 +4,7 @@ use shogi::{Piece, Square};
 use crate::engine::Score;
 use crate::piece_button::{self, PIECE_TYPES};
 use super::{ShogiGame, TurnState, PendingPromotion};   // `super` reaches back to shogi_game.rs's scope
+use super::quality::QualityTier;
 
 impl ShogiGame {
     pub(super) fn is_flipped(&self) -> bool {
@@ -23,10 +24,18 @@ impl ShogiGame {
     pub(super) fn render_sprite(&mut self, ui: &mut egui::Ui) {
         let sprite_size = Vec2::new(750.0, 750.0);
         let rect = Rect::from_min_size(Pos2::new(550.0, -50.0), sprite_size);
-        ui.put(
-            rect,
-            egui::Image::new(egui::include_image!("../images/sprites/arcueid_3_0.png")).fit_to_exact_size(sprite_size),
-        );
+        let tier = self.last_quality.as_ref().map(|q| q.tier).unwrap_or(QualityTier::Neutral);
+        ui.put(rect, egui::Image::new(tier.sprite()).fit_to_exact_size(sprite_size));
+
+        if let Some(quality) = &self.last_quality {
+            ui.painter().text(
+                Pos2::new(rect.min.x, rect.max.y + 10.0), // just below the actual sprite
+                egui::Align2::LEFT_TOP,
+                quality.describe(),
+                egui::FontId::default(),
+                egui::Color32::LIGHT_GRAY,
+            );
+        }
     }
 
     pub(super) fn render_grid(&mut self, ui: &mut egui::Ui) { 
@@ -231,21 +240,11 @@ impl ShogiGame {
     }
 
     pub(super) fn render_analysis_contents(&mut self, ui: &mut egui::Ui) {
-        if let Some(engine) = &mut self.engine {
-            let (lines, finished) = engine.poll_analysis();
-            if !lines.is_empty() {
-                self.analysis_lines = lines;
-            }
-            if finished {
-                self.analysis_running = false;
-            }
-        }
-
         ui.horizontal(|ui| {
             if self.analysis_running {
                 ui.label("Analyzing...");
                 if ui.button("Stop").clicked() {
-                    if let Some(engine) = &mut self.engine {
+                    if let Some(engine) = &mut self.analysis_engine {
                         engine.stop_analysis();
                     }
                 }
@@ -253,7 +252,6 @@ impl ShogiGame {
                 self.start_analysis();
             }
         });
-
         ui.separator();
 
         if self.analysis_lines.is_empty() {
