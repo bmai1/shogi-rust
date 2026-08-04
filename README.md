@@ -17,7 +17,7 @@ A cross-platform Shogi app in Rust with [YaneuraOu](https://github.com/yaneurao/
 - Turn-lock until opponent finishes their move
 > Random matchmaking is in development. Currently you can only play with Steam friends.
 
-![Shogi board](docs/images/online.png)
+![Online lobby](docs/images/online.png)
 
 ### AI opponent & analysis
 - Play against YaneuraOu (NNUE halfkp 256x2 32 32) with adjustable thinking time
@@ -26,8 +26,8 @@ A cross-platform Shogi app in Rust with [YaneuraOu](https://github.com/yaneurao/
 - Sandbox mode for free play/analysis without an opponent
 > Selecting a specific engine is in development.
 
-![Shogi board](docs/images/engine_analysis.png)
-![Shogi board](docs/images/engine_settings.png)
+![Engine analysis](docs/images/engine_analysis.png)
+![Engine settings](docs/images/engine_settings.png)
 
 ## Setup
  
