@@ -1,6 +1,6 @@
 # ShogiSandbox
  
-A cross-platform Shogi app in Rust with [YaneuraOu](https://github.com/yaneurao/yaneuraou) engine analysis, local AI opponent, and online multiplayer over Steam.
+A cross-platform Shogi app in Rust with [YaneuraOu](https://github.com/yaneurao/yaneuraou) engine analysis, local AI opponent, and online multiplayer.
 
 ![Shogi board](docs/images/board.png)
 
@@ -16,6 +16,7 @@ A cross-platform Shogi app in Rust with [YaneuraOu](https://github.com/yaneurao/
 - Peer-to-peer, no dedicated server
 - Turn-lock until opponent finishes their move
 > Random matchmaking is in development. Currently you can only play with Steam friends.
+
 ![Shogi board](docs/images/online.png)
 
 ### AI opponent & analysis
@@ -24,7 +25,9 @@ A cross-platform Shogi app in Rust with [YaneuraOu](https://github.com/yaneurao/
 - Move quality feedback on how good your moves were
 - Sandbox mode for free play/analysis without an opponent
 > Selecting a specific engine is in development.
-![Shogi board](docs/images/engine.png)
+
+![Shogi board](docs/images/engine_analysis.png)
+![Shogi board](docs/images/engine_settings.png)
 
 ## Setup
  
