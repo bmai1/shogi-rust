@@ -138,25 +138,40 @@ impl ShogiApp {
                                 online.controller.request_lobby_list();
                                 online.status = "Searching for lobbies...".into();
                             }
-                            ui.add_space(20.0);
+                            ui.add_space(10.0);
 
-                            egui::ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
+                            let list_width = 400.0;
+                            ui.horizontal(|ui| {
+                                let margin = ((ui.available_width() - list_width) / 2.0).max(0.0);
                                 if online.lobbies.is_empty() {
-                                    ui.label("No lobbies found yet.");
+                                    ui.add_space(margin);
                                 }
-                                for lobby in online.lobbies.clone() {
-                                    let host_name = online.controller.display_name(lobby.owner);
-                                    ui.horizontal(|ui| {
-                                        ui.label(format!(
-                                           "{}'s game ({}/2 players)",
-                                            host_name, lobby.member_count
-                                        ));
-                                        if ui.button("Join").clicked() {
-                                            online.controller.join_lobby(lobby.id);
-                                            online.status = "Joining lobby...".into();
-                                        }
-                                    });
+                                else {
+                                    ui.add_space(margin + 100.0);
                                 }
+                                ui.vertical(|ui| {
+                                    ui.set_width(list_width);
+                                    egui::ScrollArea::vertical()
+                                        .max_height(240.0)
+                                        .auto_shrink([false, true])
+                                        .show(ui, |ui| {
+                                            if online.lobbies.is_empty() {
+                                                ui.vertical_centered(|ui| {
+                                                    ui.label("No lobbies found yet.");
+                                                });
+                                            }
+                                            for lobby in online.lobbies.clone() {
+                                                let host_name = online.controller.display_name(lobby.owner);
+                                                ui.horizontal(|ui| {
+                                                    ui.label(format!("{}'s game ({}/2 players)", host_name, lobby.member_count));
+                                                    if ui.button("Join").clicked() {
+                                                        online.controller.join_lobby(lobby.id);
+                                                        online.status = "Joining lobby...".into();
+                                                    }
+                                                });
+                                            }
+                                        });
+                                });
                             });
                         }
                     }
